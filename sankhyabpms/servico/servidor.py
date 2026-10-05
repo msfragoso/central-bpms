@@ -34,6 +34,9 @@ import app_sync  # noqa: E402,F401
 
 PORTA = int(CONFIG.get("porta") or 8766)
 HOSTS_OK = {f"127.0.0.1:{PORTA}", f"localhost:{PORTA}"}
+# Páginas que podem chamar o serviço: as servidas por ele mesmo e o site da
+# Central no GitHub Pages (que exige login antes de mostrar as telas).
+ORIGENS_OK = {f"http://127.0.0.1:{PORTA}", f"http://localhost:{PORTA}", "https://msfragoso.github.io"}
 LIMITE_CORPO = 60 * 1024 * 1024  # uploads em base64 (CSV/Excel)
 
 
@@ -51,14 +54,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(dados)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        for k, v in (extra or {}).items():
+        for k, v in {**self._cors(), **(extra or {})}.items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(dados)
 
     def _host_ok(self):
         # Protege contra DNS rebinding: só atende quem chamou pelo endereço local.
-        return (self.headers.get("Host") or "") in HOSTS_OK
+        # Chamadas vindas de páginas de outros sites (Origin fora da lista) são recusadas.
+        origem = self.headers.get("Origin")
+        return (self.headers.get("Host") or "") in HOSTS_OK and (origem is None or origem in ORIGENS_OK)
+
+    def _cors(self):
+        origem = self.headers.get("Origin")
+        if origem in ORIGENS_OK:
+            return {"Access-Control-Allow-Origin": origem, "Vary": "Origin"}
+        return {}
 
     # ---------------------------------------------------------------- GET
     def do_GET(self):
@@ -106,7 +117,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return self._enviar(403, {"erro": "Acesso permitido só pelo endereço local."})
         # Cabeçalho próprio + JSON: um site de fora não consegue mandar isso sem
-        # pré-verificação CORS (que este serviço nunca libera).
+        # pré-verificação CORS (liberada só para ORIGENS_OK).
         if self.headers.get("X-BPMS") != "1" or "application/json" not in (self.headers.get("Content-Type") or ""):
             return self._enviar(403, {"erro": "Requisição recusada."})
         tamanho = int(self.headers.get("Content-Length") or 0)
@@ -122,7 +133,18 @@ class Handler(BaseHTTPRequestHandler):
         self._api("POST", unquote(url.path), {}, corpo)
 
     def do_OPTIONS(self):
-        self._enviar(403, {"erro": "CORS não permitido."})
+        # Pré-verificação CORS: liberada só para as origens da lista (site da Central).
+        if not self._host_ok() or self.headers.get("Origin") not in ORIGENS_OK:
+            return self._enviar(403, {"erro": "CORS não permitido."})
+        self.send_response(204)
+        for k, v in self._cors().items():
+            self.send_header(k, v)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-BPMS")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     # ---------------------------------------------------------------- API
     def _api(self, metodo, caminho, query, corpo):

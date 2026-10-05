@@ -24,6 +24,10 @@ const BPMS = (() => {
   if (temaSalvo) document.documentElement.dataset.theme = temaSalvo;
 
   // ------------------------------------------------------------ API
+  // Aberta pelo serviço (127.0.0.1:8766) usa o mesmo endereço; aberta pelo site
+  // do GitHub fala com o serviço do PC pelo endereço local.
+  const LOCAL = ["127.0.0.1", "localhost"].includes(location.hostname);
+  const SERVICO = LOCAL ? "" : "http://127.0.0.1:8766";
   async function api(metodo, caminho, corpo) {
     const op = { method: metodo, headers: {} };
     if (corpo !== undefined) {
@@ -33,9 +37,9 @@ const BPMS = (() => {
     }
     let resp;
     try {
-      resp = await fetch(caminho, op);
+      resp = await fetch(SERVICO + caminho, op);
     } catch (e) {
-      throw new Error("Serviço local fora do ar. Abra a Central pelo atalho Iniciar_Central.");
+      throw new Error("Serviço local fora do ar. Abra o atalho Central BP-MS (HTML5) na Área de Trabalho.");
     }
     let dados = {};
     try { dados = await resp.json(); } catch (e) { /* sem corpo */ }
@@ -254,7 +258,7 @@ const BPMS = (() => {
 
   function mostrarArquivos(caixa, t) {
     caixa.innerHTML = t.arquivos.map((a) => {
-      const base = `/api/tarefas/${t.id}/arquivo/${a.indice}`;
+      const base = `${SERVICO}/api/tarefas/${t.id}/arquivo/${a.indice}`;
       const html = /\.html?$/i.test(a.nome);
       return `<a class="btn secundario pequeno" href="${base}${html ? "?ver=1" : ""}" ${html ? 'target="_blank" rel="noopener"' : ""}>⬇ ${esc(a.rotulo)}</a>`;
     }).join("");

@@ -185,3 +185,17 @@ td.centro, th.centro { text-align: center; }
   .nav { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; }
   .log { height: 260px; }
 }
+
+/* login (site do GitHub) */
+.trava-login body > :not(#login) { display: none !important; }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.login .card { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 12px; padding: 28px; }
+.login h1 { margin: 0; font-size: 22px; }
+.login .suave { margin: 0; color: var(--suave); }
+.login .link { background: none; border: 0; padding: 0; color: var(--local); font: inherit; font-size: 13px; cursor: pointer; align-self: flex-start; }
+.login .erro { color: var(--perigo); font-size: 13px; min-height: 1.2em; margin: 0; }
+
+/* atalhos da página inicial */
+.atalhos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.atalhos a { font-weight: 600; font-size: 13px; padding: 7px 14px; border: 1px solid var(--linha); border-radius: 8px; background: var(--card); color: var(--texto); text-decoration: none; }
+.atalhos a:hover, .atalhos a:focus-visible { border-color: var(--local); color: var(--local); }
