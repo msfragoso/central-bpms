@@ -9,10 +9,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: cabeçalho curto, 5 processos em grade (2 colunas no desktop, 1 no celular), configuração no rodapé */
+/* Layout: cabeçalho com status do serviço local, formulário do ClickUp em largura total, demais processos em grade de 2 colunas */
 :root{
   --bg:#f3f6f4; --surface:#fff; --line:#d7e0db; --fg:#14211b; --muted:#5b6b63;
   --local:#0a7a52; --local-soft:#e1f2ea; --claude:#a3520f; --claude-soft:#fbeadb;
+  --clickup:#6b5bd6; --clickup-soft:#ece9fb;
+  --ok:#2e8b57; --bad:#c0392b; --warn:#b5650b;
   --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
@@ -20,17 +22,21 @@
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#0f1613; --surface:#16201b; --line:#2a3832; --fg:#e4ede8; --muted:#93a59c;
-  --local:#3fc48f; --local-soft:#16352a; --claude:#f0a35e; --claude-soft:#3a2614; color-scheme:dark}}
+  --local:#3fc48f; --local-soft:#16352a; --claude:#f0a35e; --claude-soft:#3a2614;
+  --clickup:#a99cf5; --clickup-soft:#25223d; --ok:#4cc38a; --bad:#ff8a80; --warn:#f0a35e; color-scheme:dark}}
 *{box-sizing:border-box}
 html,body{margin:0}
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body)}
 .wrap{max-width:1040px;margin:0 auto;padding-inline:20px;padding-block:28px 56px;display:flex;flex-direction:column;gap:24px}
 header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
 h1{font:700 2rem/1.1 var(--display);margin:0;letter-spacing:-.01em}
 .sub{margin:4px 0 0;color:var(--muted);font-size:.92rem}
-.legend{display:flex;gap:14px;font-size:.82rem;color:var(--muted)}
-.legend span{display:inline-flex;align-items:center;gap:6px}
-.dot{width:10px;height:10px;border-radius:50%}
+.hright{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.user{display:flex;gap:10px;align-items:center;font-size:.82rem;color:var(--muted)}
+.svc{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)}
+.svc .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.svc.on .dot{background:var(--ok)} .svc.off .dot{background:var(--bad)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 @media (max-width:720px){.grid{grid-template-columns:1fr}}
 .proc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -40,35 +46,56 @@ h1{font:700 2rem/1.1 var(--display);margin:0;letter-spacing:-.01em}
 .kind{font:500 .7rem var(--mono);text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:99px;white-space:nowrap}
 .local .kind{background:var(--local-soft);color:var(--local)}
 .claude .kind{background:var(--claude-soft);color:var(--claude)}
+.clickup .kind{background:var(--clickup-soft);color:var(--clickup)}
 .proc p{margin:0;color:var(--muted);font-size:.9rem}
 .path{font:400 .78rem var(--mono);color:var(--muted);overflow-wrap:anywhere}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-button,.btn{font:600 .9rem var(--body);border-radius:7px;padding:9px 16px;cursor:pointer;text-decoration:none;border:1px solid transparent;display:inline-flex;align-items:center}
+button,.btn{font:600 .9rem var(--body);border-radius:7px;padding:9px 16px;cursor:pointer;text-decoration:none;border:1px solid transparent;display:inline-flex;align-items:center;justify-content:center}
+button:disabled{opacity:.55;cursor:not-allowed}
 .local .primary{background:var(--local);color:var(--surface)}
 .claude .primary{background:var(--claude);color:var(--surface)}
+.clickup .primary{background:var(--clickup);color:var(--surface)}
 .ghost{background:transparent;color:var(--fg);border-color:var(--line)}
 .ghost:hover{border-color:var(--muted)}
-button:focus-visible,.btn:focus-visible,textarea:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
-textarea{width:100%;min-height:120px;resize:vertical;font:.9rem/1.45 var(--body);padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg)}
+.mini{padding:5px 10px;font-size:.8rem}
+button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
 .last{font:400 .75rem var(--mono);color:var(--muted)}
 .toast{min-height:1.2em;font-size:.82rem;color:var(--muted)}
 details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
 summary{cursor:pointer;font-weight:600}
 details ol{margin:10px 0 0;padding-left:1.2rem;display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:.9rem;max-width:70ch}
-code{font:.82rem var(--mono)}
 details a{color:var(--local)}
-[hidden]{display:none!important}
+code{font:.82rem var(--mono)}
+/* formulário */
+.form{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px 14px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0;grid-column:span 6}
+.f.s3{grid-column:span 3} .f.s2{grid-column:span 2} .f.s4{grid-column:span 4}
+@media (max-width:720px){.f.s3,.f.s2,.f.s4{grid-column:span 6}}
+.f>label,.f>.lbl{font-size:.82rem;font-weight:600;color:var(--fg);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.hint{font-weight:400;font-size:.76rem;color:var(--muted)}
+.hint.ok{color:var(--ok)} .hint.bad{color:var(--bad)} .hint.warn{color:var(--warn)}
+input,select,textarea{font:.95rem var(--body);padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg);width:100%;min-width:0}
+textarea{min-height:150px;resize:vertical;line-height:1.45}
+.inline{display:flex;gap:6px;align-items:center;min-width:0}
+.inline>input,.inline>select,.inline>.combo{flex:1}
+.combo{position:relative;min-width:0}
+.combo input{padding-right:30px}
+.combo .st{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;font-size:.9rem}
+.combo .st.ok{color:var(--ok)} .combo .st.bad{color:var(--bad)}
+.combo ul{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 2px);margin:0;padding:4px 0;list-style:none;background:var(--surface);border:1px solid var(--clickup);border-radius:7px;max-height:16rem;overflow:auto;box-shadow:0 8px 24px rgb(0 0 0/.15)}
+.combo li{padding:6px 11px;cursor:pointer;font-size:.92rem}
+.combo li.sel{background:var(--clickup);color:var(--surface)}
+.msg{border-radius:8px;padding:12px 14px;font-size:.9rem;white-space:pre-line;border:1px solid var(--line)}
+.msg.ok{border-color:var(--ok)} .msg.bad{border-color:var(--bad)}
+.lancar{grid-column:span 6;padding:12px;font-size:1rem}
+/* login */
 .login{min-height:100vh;display:grid;place-items:center;padding-inline:20px;padding-block:24px}
 .login form{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px;display:flex;flex-direction:column;gap:14px}
 .login h1{font-size:1.7rem}
 .field{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
-.field input{font:1rem var(--body);padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg)}
-.field input:focus-visible{outline:2px solid var(--local);outline-offset:1px}
-.login .primary{background:var(--local);color:var(--surface);justify-content:center}
+.login .primary{background:var(--local);color:var(--surface)}
 .linkbtn{background:none;border:0;padding:0;color:var(--local);font:500 .85rem var(--body);cursor:pointer;align-self:flex-start}
-.erro{color:#b42318;font-size:.85rem;min-height:1.2em;margin:0}
-@media (prefers-color-scheme:dark){.erro{color:#ff8a80}}
-.user{display:flex;gap:10px;align-items:center;font-size:.82rem;color:var(--muted)}
+.erro{color:var(--bad);font-size:.85rem;min-height:1.2em;margin:0}
 </style>
 </head>
 <body>
@@ -89,30 +116,72 @@ details a{color:var(--local)}
     <p class="erro" id="erro" role="alert"></p>
   </form>
 </div>
+
 <div class="wrap" id="app" hidden>
   <header>
     <div>
       <h1>Central BP-MS</h1>
       <p class="sub">Os 5 processos do PMO em uma tela.</p>
     </div>
-    <div class="user"><span id="quem"></span><button class="btn ghost" type="button" id="sair">Sair</button></div>
-    <div class="legend">
-      <span><i class="dot" style="background:var(--local)"></i>Roda no seu PC</span>
-      <span><i class="dot" style="background:var(--claude)"></i>Abre no Claude</span>
+    <div class="hright">
+      <div class="user"><span id="quem"></span><button class="btn ghost mini" type="button" id="sair">Sair</button></div>
+      <span class="svc" id="svc" title="Serviço local que roda os processos no seu PC"><i class="dot"></i><span id="svcTxt">Conectando ao seu PC...</span></span>
     </div>
   </header>
 
   <main class="grid">
-    <section class="proc claude wide" data-id="clickup">
-      <div class="top"><h2>Lançar tarefa no ClickUp</h2><span class="kind">Claude</span></div>
-      <p>Cole o detalhamento da demanda (Detalhamento, Parceiro, Usuário, Responsável, Período, Data).</p>
-      <label for="detalhe" class="path">Detalhamento</label>
-      <textarea id="detalhe" placeholder="Detalhamento: ...&#10;Parceiro: ...&#10;Usuário: ..."></textarea>
-      <div class="row">
-        <button class="primary" type="button" data-claude="clickup">Abrir no Claude</button>
-        <a class="btn ghost" href="https://app.clickup.com/9013912851/v/s/90133723590" target="_blank" rel="noopener">PMO BP-MS no ClickUp</a>
-        <span class="last"></span>
-      </div>
+    <!-- 1. Lançar tarefa no ClickUp: mesma tela do Lançador de Demandas -->
+    <section class="proc clickup wide" data-id="clickup">
+      <div class="top"><h2>Lançar tarefa no ClickUp</h2><span class="kind">ClickUp</span></div>
+      <form class="form" id="fLancar" novalidate autocomplete="off">
+        <div class="f s4">
+          <label for="parceiro">1. Parceiro <span class="hint">digite para buscar, Enter seleciona</span></label>
+          <div class="combo" id="cParceiro"><input id="parceiro"><span class="st"></span></div>
+        </div>
+        <div class="f s2">
+          <label for="fap">FAP <span class="hint" id="fapInfo">selecione o parceiro</span></label>
+          <div class="inline">
+            <select id="fap" disabled></select>
+            <button class="btn ghost mini" type="button" id="fapRecarregar" title="Buscar as FAPs de novo">⟳</button>
+          </div>
+        </div>
+        <div class="f s3">
+          <label for="origem">2. Origem da demanda</label>
+          <select id="origem"><option value="">Selecione...</option></select>
+        </div>
+        <div class="f s3">
+          <label for="titulo">3. Título da tarefa</label>
+          <input id="titulo">
+        </div>
+        <div class="f s3">
+          <label for="usuario">4. Usuário cliente <span class="hint">opcional</span></label>
+          <input id="usuario">
+        </div>
+        <div class="f s3">
+          <label for="responsavel">5. Responsável / Consultor <span class="hint" id="respInfo">opcional</span></label>
+          <div class="combo" id="cResp"><input id="responsavel"><span class="st"></span></div>
+        </div>
+        <div class="f s3">
+          <label for="venc">6. Vencimento <span class="hint" id="vencInfo">opcional</span></label>
+          <div class="inline">
+            <input id="venc" type="date">
+            <button class="btn ghost mini" type="button" data-dias="0">Hoje</button>
+            <button class="btn ghost mini" type="button" data-dias="1">Amanhã</button>
+            <button class="btn ghost mini" type="button" data-dias="7">+7d</button>
+            <button class="btn ghost mini" type="button" data-dias="x" title="Limpar">✕</button>
+          </div>
+        </div>
+        <div class="f s3">
+          <label for="periodo">7. Período <span class="hint">opcional, ex.: 08h-10h</span></label>
+          <div class="combo" id="cPeriodo"><input id="periodo"><span class="st"></span></div>
+        </div>
+        <div class="f">
+          <label for="detalhamento">8. Detalhamento <span class="hint">cole o texto da demanda</span></label>
+          <textarea id="detalhamento"></textarea>
+        </div>
+        <button class="primary lancar" type="submit" id="btnLancar">Lançar tarefa no ClickUp</button>
+        <div class="f" id="resultado" hidden><div class="msg" id="resultadoMsg" role="status"></div></div>
+      </form>
     </section>
 
     <section class="proc local" data-id="experience">
@@ -120,8 +189,8 @@ details a{color:var(--local)}
       <p>Sync ClickUp para Experience (sankhya_integracao).</p>
       <p class="path">Programa escolhido na primeira execução</p>
       <div class="row">
-        <a class="btn primary" href="bpms://experience">Executar</a>
-        <a class="btn ghost" href="bpms://pasta/experience">Abrir pasta</a>
+        <button class="primary" type="button" data-exec="experience">Executar</button>
+        <button class="ghost" type="button" data-pasta="experience">Abrir pasta</button>
         <span class="last"></span>
       </div>
     </section>
@@ -131,9 +200,9 @@ details a{color:var(--local)}
       <p>Confronta os apontamentos do ClickUp com o Experience.</p>
       <p class="path">conferencia_os\Rodar_Conferencia.bat</p>
       <div class="row">
-        <a class="btn primary" href="bpms://conferencia">Executar</a>
-        <a class="btn ghost" href="bpms://travados">Apontamentos travados</a>
-        <a class="btn ghost" href="bpms://pasta/conferencia">Abrir pasta</a>
+        <button class="primary" type="button" data-exec="conferencia">Executar</button>
+        <button class="ghost" type="button" data-exec="travados">Apontamentos travados</button>
+        <button class="ghost" type="button" data-pasta="conferencia">Abrir pasta</button>
         <span class="last"></span>
       </div>
     </section>
@@ -143,8 +212,8 @@ details a{color:var(--local)}
       <p>Dispara o aceite das OSs para os parceiros.</p>
       <p class="path">aceite_os\Rodar_Aceite.bat</p>
       <div class="row">
-        <a class="btn primary" href="bpms://aceite">Executar</a>
-        <a class="btn ghost" href="bpms://pasta/aceite">Abrir pasta</a>
+        <button class="primary" type="button" data-exec="aceite">Executar</button>
+        <button class="ghost" type="button" data-pasta="aceite">Abrir pasta</button>
         <span class="last"></span>
       </div>
     </section>
@@ -153,7 +222,7 @@ details a{color:var(--local)}
       <div class="top"><h2>Agenda semanal</h2><span class="kind">Claude</span></div>
       <p>Monta a Confirmação da Agenda de Serviço da próxima semana a partir da view "Agrupado p/Enviar".</p>
       <div class="row">
-        <button class="primary" type="button" data-claude="agenda">Abrir no Claude</button>
+        <button class="primary" type="button" id="btnAgenda">Abrir no Claude</button>
         <span class="last"></span>
       </div>
     </section>
@@ -162,15 +231,269 @@ details a{color:var(--local)}
   <p class="toast" id="toast" role="status" aria-live="polite"></p>
 
   <details id="setup">
-    <summary>Primeira vez neste PC? Ative os botões verdes</summary>
+    <summary>Primeira vez neste PC? Instale o serviço local</summary>
     <ol>
-      <li>Baixe <a href="instalador/Instalar_Central.bat" download>Instalar_Central.bat</a> e <a href="instalador/central_handler.ps1" download>central_handler.ps1</a> para a mesma pasta.</li>
-      <li>Dê duplo clique em <code>Instalar_Central.bat</code>. Ele copia o handler para <code>C:\sankhya_integracao\central</code> e registra o endereço <code>bpms://</code> só para o seu usuário (não pede administrador).</li>
-      <li>Volte aqui e clique em Executar. O navegador pergunta uma vez se pode abrir o aplicativo: marque "Sempre permitir".</li>
+      <li>Baixe <a href="servico/Instalar_Central.bat" download>Instalar_Central.bat</a> e <a href="servico/servidor_local.py" download>servidor_local.py</a> para a mesma pasta.</li>
+      <li>Dê duplo clique em <code>Instalar_Central.bat</code>. Ele copia o serviço para <code>C:\sankhya_integracao\central</code>, liga o serviço agora e configura para ligar sozinho quando o Windows iniciar.</li>
+      <li>Recarregue esta página. O indicador no topo deve ficar verde. Se o navegador perguntar se o site pode acessar dispositivos da rede local, clique em Permitir.</li>
     </ol>
   </details>
 </div>
+<script>
+// ---------------------------------------------------------------------------
+// Central: conversa com o serviço local (servidor_local.py) no PC do usuário.
+// ---------------------------------------------------------------------------
+const SERVICO = "http://127.0.0.1:8765";
+const CLAUDE = "https://claude.ai/new?q=";
+const $ = id => document.getElementById(id);
+const toast = msg => { $("toast").textContent = msg; };
+const store = {
+  get(k){ try { return localStorage.getItem("central-bpms:" + k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem("central-bpms:" + k, v); } catch(e){} }
+};
+const normalizar = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const DIAS = ["dom","seg","ter","qua","qui","sex","sáb"];
+const hojeISO = (d = 0) => { const t = new Date(); t.setDate(t.getDate() + d); return t.toLocaleDateString("sv-SE"); };
+const br = iso => iso.split("-").reverse().join("/");
 
+async function api(caminho, corpo){
+  const opts = corpo === undefined ? {} : { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(corpo) };
+  let r;
+  try { r = await fetch(SERVICO + caminho, opts); }
+  catch(e){ marcarServico(false); throw new Error("O serviço local não respondeu. Confira se ele está ligado (indicador no topo)."); }
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dados.erro || ("Erro " + r.status));
+  return dados;
+}
+
+// ---------- Campo com busca (igual ao da tela antiga) ----------
+function Combo(raiz, aoSelecionar){
+  const input = raiz.querySelector("input"), st = raiz.querySelector(".st");
+  const ul = document.createElement("ul"); ul.hidden = true; ul.setAttribute("role","listbox"); raiz.appendChild(ul);
+  input.setAttribute("role","combobox"); input.setAttribute("aria-autocomplete","list");
+  let opcoes = [], filtradas = [], idx = 0;
+  const filtrar = t => {
+    t = normalizar(t); if (!t) return opcoes.slice();
+    const termos = t.split(/\s+/), comeca = [], contem = [];
+    for (const o of opcoes){ const n = normalizar(o); if (termos.every(x => n.includes(x))) (n.startsWith(t) ? comeca : contem).push(o); }
+    return comeca.concat(contem);
+  };
+  const get = () => { const t = normalizar(input.value); return opcoes.find(o => normalizar(o) === t) || input.value.trim(); };
+  const valido = () => opcoes.includes(get());
+  const status = () => {
+    if (!input.value.trim()) { st.textContent = ""; st.className = "st"; }
+    else if (valido()) { st.textContent = "✔"; st.className = "st ok"; }
+    else { st.textContent = "✖"; st.className = "st bad"; }
+  };
+  const fechar = () => { ul.hidden = true; input.setAttribute("aria-expanded","false"); };
+  const desenhar = () => {
+    if (!filtradas.length) return fechar();
+    ul.innerHTML = "";
+    filtradas.slice(0, 200).forEach((o, i) => {
+      const li = document.createElement("li"); li.textContent = o; li.setAttribute("role","option");
+      if (i === idx) li.className = "sel";
+      li.addEventListener("mousedown", e => { e.preventDefault(); escolher(o); });
+      ul.appendChild(li);
+    });
+    ul.hidden = false; input.setAttribute("aria-expanded","true");
+    const sel = ul.children[idx]; if (sel) sel.scrollIntoView({block:"nearest"});
+  };
+  const escolher = o => { input.value = o; fechar(); status(); aoSelecionar && aoSelecionar(o); };
+  input.addEventListener("input", () => { filtradas = filtrar(input.value); idx = 0; input.value.trim() ? desenhar() : fechar(); status(); raiz.dispatchEvent(new Event("mudou")); });
+  input.addEventListener("focus", () => { if (!valido()) { filtradas = filtrar(input.value); idx = 0; if (input.value.trim()) desenhar(); } });
+  input.addEventListener("blur", () => setTimeout(fechar, 120));
+  input.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      if (ul.hidden){ filtradas = filtrar(input.value).length ? filtrar(input.value) : filtrar(""); idx = 0; return desenhar(); }
+      idx = Math.max(0, Math.min(idx + (e.key === "ArrowDown" ? 1 : -1), filtradas.length - 1)); desenhar();
+    } else if (e.key === "Enter" || e.key === "Tab"){
+      if (!ul.hidden && filtradas.length){ if (e.key === "Enter") e.preventDefault(); escolher(filtradas[idx]); }
+      else { const f = filtrar(input.value); if (f.length === 1 && !valido() && input.value.trim()){ if (e.key === "Enter") e.preventDefault(); escolher(f[0]); } else if (e.key === "Enter") e.preventDefault(); }
+    } else if (e.key === "Escape"){ fechar(); }
+  });
+  return {
+    get, valido, input,
+    set(v){ input.value = v || ""; status(); },
+    opcoes(l){ opcoes = l.slice(); status(); }
+  };
+}
+
+// ---------- Indicador do serviço local ----------
+let servicoOk = false;
+function marcarServico(ok, txt){
+  servicoOk = ok;
+  $("svc").className = "svc " + (ok ? "on" : "off");
+  $("svcTxt").textContent = txt || (ok ? "Serviço local conectado" : "Serviço local desligado");
+  if (!ok) $("setup").open = true;
+}
+async function checarServico(){
+  try {
+    const r = await fetch(SERVICO + "/status").then(x => x.json());
+    marcarServico(true, r.motor ? "Serviço local conectado" : "Serviço ligado, mas sem o motor do lançador");
+    if (!r.motor && r.erro_motor) mostrarResultado(false, r.erro_motor);
+    return r;
+  } catch(e){ marcarServico(false); return null; }
+}
+
+// ---------- Lançar tarefa no ClickUp ----------
+const cParceiro = Combo($("cParceiro"), () => $("origem").focus());
+const cResp = Combo($("cResp"));
+const cPeriodo = Combo($("cPeriodo"));
+let faps = [], fapParceiro = null, fapCarregando = false;
+
+function fapInfo(txt, cls){ $("fapInfo").textContent = txt; $("fapInfo").className = "hint " + (cls || ""); }
+function resetarFap(txt = "selecione o parceiro"){
+  faps = []; fapParceiro = null; $("fap").innerHTML = ""; $("fap").disabled = true; fapInfo(txt);
+}
+async function carregarFaps(parceiro, forcar){
+  fapParceiro = parceiro; fapCarregando = true; faps = [];
+  $("fap").innerHTML = ""; $("fap").disabled = true; fapInfo("buscando FAPs...");
+  try {
+    const r = await api("/clickup/faps?parceiro=" + encodeURIComponent(parceiro) + (forcar ? "&forcar=1" : ""));
+    if (fapParceiro !== parceiro) return;
+    faps = r.faps;
+    $("fap").innerHTML = (faps.length > 1 ? '<option value="">Escolha a FAP...</option>' : "") +
+      faps.map(f => `<option value="${f.id}"></option>`).join("");
+    [...$("fap").options].forEach(o => { const f = faps.find(x => x.id === o.value); if (f) o.textContent = f.nome; });
+    if (faps.length === 1){ $("fap").disabled = true; fapInfo("única FAP ativa", "ok"); }
+    else if (faps.length > 1){ $("fap").disabled = false; fapInfo(faps.length + " FAPs ativas: escolha uma", "warn"); }
+    else fapInfo("nenhuma FAP avulso ativa", "bad");
+  } catch(e){ if (fapParceiro === parceiro) fapInfo("erro ao buscar FAPs: " + e.message, "bad"); }
+  finally { if (fapParceiro === parceiro) fapCarregando = false; }
+}
+let tParceiro = null;
+$("cParceiro").addEventListener("mudou", agendarFaps);
+function agendarFaps(){
+  clearTimeout(tParceiro);
+  tParceiro = setTimeout(() => {
+    const p = cParceiro.get();
+    if (cParceiro.valido()){ if (fapParceiro !== p) carregarFaps(p); }
+    else if (fapParceiro) resetarFap();
+  }, 250);
+}
+cParceiro.input.addEventListener("blur", () => setTimeout(agendarFaps, 150));
+$("fap").addEventListener("change", () => fapInfo($("fap").value ? "FAP escolhida" : "escolha uma FAP", $("fap").value ? "ok" : "warn"));
+$("fapRecarregar").addEventListener("click", () => { if (cParceiro.valido()) carregarFaps(cParceiro.get(), true); });
+
+function mostrarDia(){
+  const v = $("venc").value, h = $("vencInfo");
+  if (!v){ h.textContent = "opcional"; h.className = "hint"; return; }
+  const d = new Date(v + "T12:00:00");
+  h.textContent = DIAS[d.getDay()] + ", " + br(v); h.className = "hint";
+}
+$("venc").addEventListener("input", mostrarDia);
+document.querySelectorAll("[data-dias]").forEach(b => b.addEventListener("click", () => {
+  $("venc").value = b.dataset.dias === "x" ? "" : hojeISO(+b.dataset.dias); mostrarDia();
+}));
+cPeriodo.input.addEventListener("blur", () => setTimeout(async () => {
+  const t = cPeriodo.input.value.trim(); if (!t || cPeriodo.valido() || !servicoOk) return;
+  try { const r = await api("/clickup/periodo?texto=" + encodeURIComponent(t)); if (r.periodo) cPeriodo.set(r.periodo); } catch(e){}
+}, 200));
+
+function mostrarResultado(ok, texto){
+  $("resultado").hidden = false;
+  $("resultadoMsg").className = "msg " + (ok ? "ok" : "bad");
+  $("resultadoMsg").textContent = texto;
+}
+function limparTela(){
+  ["titulo","usuario","detalhamento","venc"].forEach(id => $(id).value = "");
+  cParceiro.set(""); cResp.set(""); cPeriodo.set(""); $("origem").value = "";
+  resetarFap(); mostrarDia(); cParceiro.input.focus();
+}
+
+$("fLancar").addEventListener("submit", async e => {
+  e.preventDefault();
+  const falha = (msg, foco) => { mostrarResultado(false, msg); if (foco) foco.focus(); };
+  const parceiro = cParceiro.get(), origem = $("origem").value, titulo = $("titulo").value.trim();
+  const detalhamento = $("detalhamento").value.trim(), responsavel = cResp.get();
+  if (!parceiro || !origem || !titulo || !detalhamento) return falha("Parceiro, Origem, Título e Detalhamento são obrigatórios.");
+  if (!cParceiro.valido()) return falha(`O parceiro '${parceiro}' não é válido. Selecione um da lista.`, cParceiro.input);
+  if (responsavel && !cResp.valido()) return falha(`Responsável '${responsavel}' não encontrado. Selecione da lista ou deixe em branco.`, cResp.input);
+  if (fapParceiro !== parceiro || fapCarregando) return falha("Ainda carregando as FAPs do parceiro. Tente de novo em instantes.");
+  if (!faps.length) return falha(`Nenhuma FAP avulso ativa encontrada para '${parceiro}'.\nConfira no ClickUp se existe uma lista com 'Avulso' no nome e sem 'Z' na frente.`);
+  const fapId = faps.length === 1 ? faps[0].id : $("fap").value;
+  const fap = faps.find(f => f.id === fapId);
+  if (!fap) return falha(`'${parceiro}' tem ${faps.length} FAPs avulso ativas. Selecione em qual delas a demanda deve ser lançada.`, $("fap"));
+  const venc = $("venc").value, periodo = cPeriodo.input.value.trim();
+  if (periodo && !venc) return falha("Período preenchido sem data. Informe o vencimento (dia do atendimento) ou apague o período.", $("venc"));
+  if (venc && venc < hojeISO() && !confirm(`O vencimento ${br(venc)} já passou. Lançar mesmo assim?`)) return;
+
+  const btn = $("btnLancar"); btn.disabled = true; btn.textContent = "Lançando... aguarde";
+  try {
+    const r = await api("/clickup/lancar", {
+      parceiro, origem, titulo, usuario: $("usuario").value.trim(), detalhamento,
+      responsavel, fap_id: fap.id, fap_nome: fap.nome, vencimento: venc, periodo
+    });
+    let txt = `Tarefa '${titulo}' lançada com sucesso!\nFAP: ${r.fap}`;
+    if (responsavel) txt += `\nResponsável: ${responsavel}`;
+    if (venc) txt += `\nVencimento: ${br(venc)}`;
+    if (r.periodo) txt += `\nPeríodo: ${r.periodo}`;
+    (r.avisos || []).forEach(a => txt += `\n\n${a}`);
+    txt += `\n\nTag no ClickUp: #${r.task_id}`;
+    limparTela(); mostrarResultado(true, txt); marcar("clickup");
+  } catch(err){ mostrarResultado(false, "Ocorreu um problema no ClickUp:\n\n" + err.message); }
+  finally { btn.disabled = false; btn.textContent = "Lançar tarefa no ClickUp"; }
+});
+
+async function carregarLancador(){
+  try {
+    const r = await api("/clickup/opcoes");
+    cParceiro.opcoes(r.parceiros); cPeriodo.opcoes(r.periodos); cResp.opcoes(r.membros);
+    $("origem").innerHTML = '<option value="">Selecione...</option>' + r.origens.map(o => `<option></option>`).join("");
+    [...$("origem").options].slice(1).forEach((o, i) => { o.value = o.textContent = r.origens[i]; });
+    const u = r.ultimo || {};
+    if (u.parceiro) cParceiro.set(u.parceiro);
+    if (u.origem && r.origens.includes(u.origem)) $("origem").value = u.origem;
+    if (u.titulo) $("titulo").value = u.titulo;
+    if (u.usuario) $("usuario").value = u.usuario;
+    if (u.detalhamento) $("detalhamento").value = u.detalhamento;
+    if (cParceiro.valido()) carregarFaps(cParceiro.get());
+    $("respInfo").textContent = r.membros.length ? "opcional" : "carregando..."; 
+    api("/clickup/membros").then(m => { cResp.opcoes(m.membros); $("respInfo").textContent = "opcional"; $("respInfo").className = "hint"; })
+      .catch(() => { if (!r.membros.length){ $("respInfo").textContent = "não carregou a lista"; $("respInfo").className = "hint bad"; } });
+  } catch(e){ mostrarResultado(false, e.message); }
+}
+
+// ---------- Scripts locais ----------
+function marcar(id){
+  store.set(id, new Date().toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
+  mostrarUltimos();
+}
+function mostrarUltimos(){
+  document.querySelectorAll(".proc").forEach(s => { const v = store.get(s.dataset.id), el = s.querySelector(".last"); if (el) el.textContent = v ? "último uso " + v : ""; });
+}
+document.querySelectorAll("[data-exec],[data-pasta]").forEach(b => b.addEventListener("click", async () => {
+  const exec = b.dataset.exec, acao = exec || b.dataset.pasta;
+  toast(exec ? "Iniciando no seu PC..." : "Abrindo a pasta...");
+  try {
+    await api((exec ? "/executar/" : "/pasta/") + acao, {});
+    toast(exec ? "Processo iniciado no seu PC." : "Pasta aberta no seu PC.");
+    if (exec) marcar(b.closest(".proc").dataset.id);
+  } catch(e){ toast(e.message); }
+}));
+
+// ---------- Agenda semanal (Claude) ----------
+$("btnAgenda").addEventListener("click", async () => {
+  const pedido = "Envia a agenda da semana para os parceiros.";
+  try { await navigator.clipboard.writeText(pedido); } catch(e){}
+  window.open(CLAUDE + encodeURIComponent(pedido), "_blank", "noopener");
+  toast("Pedido copiado. Se o Claude abrir com a caixa vazia, é só colar.");
+  marcar("agenda");
+});
+
+// ---------- Início (depois do login) ----------
+let iniciado = false;
+async function iniciarCentral(){
+  if (iniciado) return; iniciado = true;
+  mostrarUltimos(); mostrarDia(); resetarFap();
+  const s = await checarServico();
+  if (s && s.motor) carregarLancador();
+  else {
+    const t = setInterval(async () => { const r = await checarServico(); if (r){ clearInterval(t); if (r.motor) carregarLancador(); } }, 10000);
+  }
+}
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="firebase-config.js"></script>
@@ -202,7 +525,7 @@ details a{color:var(--local)}
     $("login").hidden = !!user;
     $("app").hidden = !user;
     $("quem").textContent = user ? user.email : "";
-    if (!user) $("email").focus();
+    if (user) iniciarCentral(); else document.getElementById("email").focus();
   });
   $("loginForm").addEventListener("submit", async e => {
     e.preventDefault(); erro("");
@@ -221,47 +544,6 @@ details a{color:var(--local)}
   });
   $("sair").addEventListener("click", () => auth.signOut());
 })();
-</script>
-<script>
-const CLAUDE = "https://claude.ai/new?q=";
-const PEDIDOS = {
-  clickup: () => {
-    const t = document.getElementById("detalhe").value.trim();
-    return t ? "Lança essa demanda no ClickUp:\n\n" + t : null;
-  },
-  agenda: () => "Envia a agenda da semana para os parceiros."
-};
-const toast = msg => { document.getElementById("toast").textContent = msg; };
-const store = {
-  get(k){ try { return localStorage.getItem("central-bpms:" + k); } catch(e){ return null; } },
-  set(k,v){ try { localStorage.setItem("central-bpms:" + k, v); } catch(e){} }
-};
-function marcar(id){
-  const agora = new Date().toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-  store.set(id, agora); mostrar();
-}
-function mostrar(){
-  document.querySelectorAll(".proc").forEach(s => {
-    const v = store.get(s.dataset.id), el = s.querySelector(".last");
-    if (el) el.textContent = v ? "último uso " + v : "";
-  });
-}
-document.querySelectorAll("[data-claude]").forEach(b => b.addEventListener("click", async () => {
-  const id = b.dataset.claude, pedido = PEDIDOS[id]();
-  if (!pedido){ toast("Cole o detalhamento da demanda primeiro."); document.getElementById("detalhe").focus(); return; }
-  try { await navigator.clipboard.writeText(pedido); toast("Pedido copiado. Se o Claude abrir com a caixa vazia, é só colar."); }
-  catch(e){ toast("Abrindo o Claude com o pedido."); }
-  window.open(CLAUDE + encodeURIComponent(pedido), "_blank", "noopener");
-  if (id === "clickup") document.getElementById("detalhe").value = "";
-  marcar(id);
-}));
-document.querySelectorAll('a[href^="bpms://"]').forEach(a => a.addEventListener("click", () => {
-  const sec = a.closest(".proc");
-  if (!a.href.includes("/pasta/")) marcar(sec.dataset.id);
-  toast("Pedido enviado ao seu PC. Se nada abrir, ative os botões verdes no passo abaixo.");
-}));
-if (!store.get("setup-visto")) { document.getElementById("setup").open = true; store.set("setup-visto","1"); }
-mostrar();
 </script>
 </body>
 </html>

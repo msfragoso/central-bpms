@@ -4,17 +4,21 @@ Página única com os 5 processos do PMO BP-MS:
 
 | Processo | Onde roda |
 |---|---|
-| Lançar tarefa no ClickUp | Claude (skill lancar-tarefas-clickup) |
+| Lançar tarefa no ClickUp | Formulário na página + serviço local (motor `lancar_tarefas_clickup.py`) |
 | Lançar tarefa no Experience | PC, sync sankhya_integracao |
 | Conferência de OS (ClickUp x Experience) | PC, `conferencia_os\Rodar_Conferencia.bat` |
 | Envio de Aceite de OSs | PC, `aceite_os\Rodar_Aceite.bat` |
 | Agenda semanal | Claude (skill agenda-semanal-parceiros) |
 
-## Como os botões verdes rodam scripts locais
+## Serviço local
 
-Uma página web não pode executar programas do computador. Os botões verdes usam o endereço `bpms://<ação>`, que o `instalador/Instalar_Central.bat` registra no Windows (só para o usuário, sem administrador). O Windows entrega o link ao `central_handler.ps1`, que roda **apenas** os programas listados em `C:\sankhya_integracao\central\acoes.json`. Qualquer outra ação é recusada.
+Uma página web não executa programas do computador. Por isso a Central conversa com `servico/servidor_local.py`, que roda no PC em `http://127.0.0.1:8765`:
 
-Para mudar o caminho de um processo, edite `acoes.json` ou apague a entrada: o handler pergunta o arquivo no próximo clique.
+- **Lançar no ClickUp:** usa o mesmo motor da tela antiga (`lancar_tarefas_clickup.py`, achado sozinho dentro de `C:\sankhya_integracao`) e grava o mesmo `ultimo_lancamento.json`.
+- **Executar / Abrir pasta:** roda os scripts configurados em `C:\sankhya_integracao\central\config_central.json`. Se um caminho estiver vazio ou errado, o serviço abre a janela do Windows para escolher o arquivo e guarda a escolha.
+- **Segurança:** só atende pedidos vindos de `https://msfragoso.github.io` e só escuta no próprio PC (127.0.0.1).
+
+Instalação: baixe `servico/Instalar_Central.bat` e `servico/servidor_local.py` para a mesma pasta e dê duplo clique no `.bat`. Ele copia o serviço para `C:\sankhya_integracao\central`, liga agora e cria o atalho na pasta Inicializar do Windows. Log em `C:\sankhya_integracao\central\servidor_local.log`.
 
 ## Publicação
 
