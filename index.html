@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central BP-MS</title>
+<meta name="description" content="Os 5 processos do PMO BP-MS em uma tela.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: cabeçalho curto, 5 processos em grade (2 colunas no desktop, 1 no celular), configuração no rodapé */
+:root{
+  --bg:#f3f6f4; --surface:#fff; --line:#d7e0db; --fg:#14211b; --muted:#5b6b63;
+  --local:#0a7a52; --local-soft:#e1f2ea; --claude:#a3520f; --claude-soft:#fbeadb;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1613; --surface:#16201b; --line:#2a3832; --fg:#e4ede8; --muted:#93a59c;
+  --local:#3fc48f; --local-soft:#16352a; --claude:#f0a35e; --claude-soft:#3a2614; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body)}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:20px;padding-block:28px 56px;display:flex;flex-direction:column;gap:24px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
+h1{font:700 2rem/1.1 var(--display);margin:0;letter-spacing:-.01em}
+.sub{margin:4px 0 0;color:var(--muted);font-size:.92rem}
+.legend{display:flex;gap:14px;font-size:.82rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:720px){.grid{grid-template-columns:1fr}}
+.proc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.proc.wide{grid-column:1/-1}
+.proc .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.proc h2{font:600 1.15rem/1.25 var(--display);margin:0;text-wrap:balance}
+.kind{font:500 .7rem var(--mono);text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:99px;white-space:nowrap}
+.local .kind{background:var(--local-soft);color:var(--local)}
+.claude .kind{background:var(--claude-soft);color:var(--claude)}
+.proc p{margin:0;color:var(--muted);font-size:.9rem}
+.path{font:400 .78rem var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,.btn{font:600 .9rem var(--body);border-radius:7px;padding:9px 16px;cursor:pointer;text-decoration:none;border:1px solid transparent;display:inline-flex;align-items:center}
+.local .primary{background:var(--local);color:var(--surface)}
+.claude .primary{background:var(--claude);color:var(--surface)}
+.ghost{background:transparent;color:var(--fg);border-color:var(--line)}
+.ghost:hover{border-color:var(--muted)}
+button:focus-visible,.btn:focus-visible,textarea:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+textarea{width:100%;min-height:120px;resize:vertical;font:.9rem/1.45 var(--body);padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg)}
+.last{font:400 .75rem var(--mono);color:var(--muted)}
+.toast{min-height:1.2em;font-size:.82rem;color:var(--muted)}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+summary{cursor:pointer;font-weight:600}
+details ol{margin:10px 0 0;padding-left:1.2rem;display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:.9rem;max-width:70ch}
+code{font:.82rem var(--mono)}
+details a{color:var(--local)}
+[hidden]{display:none!important}
+.login{min-height:100vh;display:grid;place-items:center;padding-inline:20px;padding-block:24px}
+.login form{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px;display:flex;flex-direction:column;gap:14px}
+.login h1{font-size:1.7rem}
+.field{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
+.field input{font:1rem var(--body);padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg)}
+.field input:focus-visible{outline:2px solid var(--local);outline-offset:1px}
+.login .primary{background:var(--local);color:var(--surface);justify-content:center}
+.linkbtn{background:none;border:0;padding:0;color:var(--local);font:500 .85rem var(--body);cursor:pointer;align-self:flex-start}
+.erro{color:#b42318;font-size:.85rem;min-height:1.2em;margin:0}
+@media (prefers-color-scheme:dark){.erro{color:#ff8a80}}
+.user{display:flex;gap:10px;align-items:center;font-size:.82rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="login" id="login" hidden>
+  <form id="loginForm" novalidate>
+    <div>
+      <h1>Central BP-MS</h1>
+      <p class="sub">Entre com seu e-mail e senha.</p>
+    </div>
+    <label class="field" for="email">E-mail
+      <input id="email" type="email" autocomplete="username" required>
+    </label>
+    <label class="field" for="senha">Senha
+      <input id="senha" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="primary" type="submit" id="entrar">Entrar</button>
+    <button class="linkbtn" type="button" id="esqueci">Esqueci a senha</button>
+    <p class="erro" id="erro" role="alert"></p>
+  </form>
+</div>
+<div class="wrap" id="app" hidden>
+  <header>
+    <div>
+      <h1>Central BP-MS</h1>
+      <p class="sub">Os 5 processos do PMO em uma tela.</p>
+    </div>
+    <div class="user"><span id="quem"></span><button class="btn ghost" type="button" id="sair">Sair</button></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--local)"></i>Roda no seu PC</span>
+      <span><i class="dot" style="background:var(--claude)"></i>Abre no Claude</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="proc claude wide" data-id="clickup">
+      <div class="top"><h2>Lançar tarefa no ClickUp</h2><span class="kind">Claude</span></div>
+      <p>Cole o detalhamento da demanda (Detalhamento, Parceiro, Usuário, Responsável, Período, Data).</p>
+      <label for="detalhe" class="path">Detalhamento</label>
+      <textarea id="detalhe" placeholder="Detalhamento: ...&#10;Parceiro: ...&#10;Usuário: ..."></textarea>
+      <div class="row">
+        <button class="primary" type="button" data-claude="clickup">Abrir no Claude</button>
+        <a class="btn ghost" href="https://app.clickup.com/9013912851/v/s/90133723590" target="_blank" rel="noopener">PMO BP-MS no ClickUp</a>
+        <span class="last"></span>
+      </div>
+    </section>
+
+    <section class="proc local" data-id="experience">
+      <div class="top"><h2>Lançar tarefa no Experience</h2><span class="kind">PC</span></div>
+      <p>Sync ClickUp para Experience (sankhya_integracao).</p>
+      <p class="path">Programa escolhido na primeira execução</p>
+      <div class="row">
+        <a class="btn primary" href="bpms://experience">Executar</a>
+        <a class="btn ghost" href="bpms://pasta/experience">Abrir pasta</a>
+        <span class="last"></span>
+      </div>
+    </section>
+
+    <section class="proc local" data-id="conferencia">
+      <div class="top"><h2>Conferência de OS</h2><span class="kind">PC</span></div>
+      <p>Confronta os apontamentos do ClickUp com o Experience.</p>
+      <p class="path">conferencia_os\Rodar_Conferencia.bat</p>
+      <div class="row">
+        <a class="btn primary" href="bpms://conferencia">Executar</a>
+        <a class="btn ghost" href="bpms://travados">Apontamentos travados</a>
+        <a class="btn ghost" href="bpms://pasta/conferencia">Abrir pasta</a>
+        <span class="last"></span>
+      </div>
+    </section>
+
+    <section class="proc local" data-id="aceite">
+      <div class="top"><h2>Envio de Aceite de OSs</h2><span class="kind">PC</span></div>
+      <p>Dispara o aceite das OSs para os parceiros.</p>
+      <p class="path">aceite_os\Rodar_Aceite.bat</p>
+      <div class="row">
+        <a class="btn primary" href="bpms://aceite">Executar</a>
+        <a class="btn ghost" href="bpms://pasta/aceite">Abrir pasta</a>
+        <span class="last"></span>
+      </div>
+    </section>
+
+    <section class="proc claude" data-id="agenda">
+      <div class="top"><h2>Agenda semanal</h2><span class="kind">Claude</span></div>
+      <p>Monta a Confirmação da Agenda de Serviço da próxima semana a partir da view "Agrupado p/Enviar".</p>
+      <div class="row">
+        <button class="primary" type="button" data-claude="agenda">Abrir no Claude</button>
+        <span class="last"></span>
+      </div>
+    </section>
+  </main>
+
+  <p class="toast" id="toast" role="status" aria-live="polite"></p>
+
+  <details id="setup">
+    <summary>Primeira vez neste PC? Ative os botões verdes</summary>
+    <ol>
+      <li>Baixe <a href="instalador/Instalar_Central.bat" download>Instalar_Central.bat</a> e <a href="instalador/central_handler.ps1" download>central_handler.ps1</a> para a mesma pasta.</li>
+      <li>Dê duplo clique em <code>Instalar_Central.bat</code>. Ele copia o handler para <code>C:\sankhya_integracao\central</code> e registra o endereço <code>bpms://</code> só para o seu usuário (não pede administrador).</li>
+      <li>Volte aqui e clique em Executar. O navegador pergunta uma vez se pode abrir o aplicativo: marque "Sempre permitir".</li>
+    </ol>
+  </details>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+// Login: o Firebase confere e-mail e senha e mantém a sessão salva neste navegador.
+(function(){
+  const $ = id => document.getElementById(id);
+  const erro = msg => { $("erro").textContent = msg || ""; };
+  const MSG = {
+    "auth/invalid-credential":"E-mail ou senha incorretos.",
+    "auth/wrong-password":"E-mail ou senha incorretos.",
+    "auth/user-not-found":"E-mail ou senha incorretos.",
+    "auth/invalid-email":"Digite um e-mail válido.",
+    "auth/too-many-requests":"Muitas tentativas. Espere alguns minutos e tente de novo.",
+    "auth/network-request-failed":"Sem conexão com o servidor de login. Confira a internet.",
+    "auth/user-disabled":"Este acesso foi desativado. Fale com o administrador."
+  };
+  const cfg = window.FIREBASE_CONFIG;
+  if (!window.firebase || !cfg || !cfg.apiKey || cfg.apiKey.startsWith("COLE")) {
+    $("login").hidden = false;
+    $("entrar").disabled = true; $("esqueci").hidden = true;
+    erro("O login ainda não foi configurado. Preencha firebase-config.js com os dados do projeto Firebase.");
+    return;
+  }
+  firebase.initializeApp(cfg);
+  const auth = firebase.auth();
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+  auth.onAuthStateChanged(user => {
+    $("login").hidden = !!user;
+    $("app").hidden = !user;
+    $("quem").textContent = user ? user.email : "";
+    if (!user) $("email").focus();
+  });
+  $("loginForm").addEventListener("submit", async e => {
+    e.preventDefault(); erro("");
+    const email = $("email").value.trim(), senha = $("senha").value;
+    if (!email || !senha) { erro("Preencha e-mail e senha."); return; }
+    $("entrar").disabled = true; $("entrar").textContent = "Entrando...";
+    try { await auth.signInWithEmailAndPassword(email, senha); $("senha").value = ""; }
+    catch (err) { erro(MSG[err.code] || "Não foi possível entrar (" + err.code + ")."); }
+    finally { $("entrar").disabled = false; $("entrar").textContent = "Entrar"; }
+  });
+  $("esqueci").addEventListener("click", async () => {
+    const email = $("email").value.trim();
+    if (!email) { erro("Digite seu e-mail acima e clique de novo em Esqueci a senha."); return; }
+    try { await auth.sendPasswordResetEmail(email); erro(""); $("erro").textContent = "Se o e-mail estiver cadastrado, o link para nova senha chega em instantes."; }
+    catch (err) { erro(MSG[err.code] || "Não foi possível enviar o e-mail (" + err.code + ")."); }
+  });
+  $("sair").addEventListener("click", () => auth.signOut());
+})();
+</script>
+<script>
+const CLAUDE = "https://claude.ai/new?q=";
+const PEDIDOS = {
+  clickup: () => {
+    const t = document.getElementById("detalhe").value.trim();
+    return t ? "Lança essa demanda no ClickUp:\n\n" + t : null;
+  },
+  agenda: () => "Envia a agenda da semana para os parceiros."
+};
+const toast = msg => { document.getElementById("toast").textContent = msg; };
+const store = {
+  get(k){ try { return localStorage.getItem("central-bpms:" + k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem("central-bpms:" + k, v); } catch(e){} }
+};
+function marcar(id){
+  const agora = new Date().toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+  store.set(id, agora); mostrar();
+}
+function mostrar(){
+  document.querySelectorAll(".proc").forEach(s => {
+    const v = store.get(s.dataset.id), el = s.querySelector(".last");
+    if (el) el.textContent = v ? "último uso " + v : "";
+  });
+}
+document.querySelectorAll("[data-claude]").forEach(b => b.addEventListener("click", async () => {
+  const id = b.dataset.claude, pedido = PEDIDOS[id]();
+  if (!pedido){ toast("Cole o detalhamento da demanda primeiro."); document.getElementById("detalhe").focus(); return; }
+  try { await navigator.clipboard.writeText(pedido); toast("Pedido copiado. Se o Claude abrir com a caixa vazia, é só colar."); }
+  catch(e){ toast("Abrindo o Claude com o pedido."); }
+  window.open(CLAUDE + encodeURIComponent(pedido), "_blank", "noopener");
+  if (id === "clickup") document.getElementById("detalhe").value = "";
+  marcar(id);
+}));
+document.querySelectorAll('a[href^="bpms://"]').forEach(a => a.addEventListener("click", () => {
+  const sec = a.closest(".proc");
+  if (!a.href.includes("/pasta/")) marcar(sec.dataset.id);
+  toast("Pedido enviado ao seu PC. Se nada abrir, ative os botões verdes no passo abaixo.");
+}));
+if (!store.get("setup-visto")) { document.getElementById("setup").open = true; store.set("setup-visto","1"); }
+mostrar();
+</script>
+</body>
+</html>
