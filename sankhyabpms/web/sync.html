@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sync tarefa ClickUp</title>
+<link rel="stylesheet" href="assets/padrao.css">
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="sync.titulo">Sync tarefa ClickUp ⇄ Experience</h1>
+      <p data-texto="sync.subtitulo">Fases 1 a 4 (excluir, alterar, criar, retentativa) · caça a órfãos e duplicatas · saldo dos pedidos</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="sync"></span>
+  </div>
+
+  <div class="grade duas">
+    <section class="card faixa">
+      <h2>Parâmetros</h2>
+      <div class="campos">
+        <div class="campo">
+          <label for="parceiro">Parceiro, número da FAP ou nome da lista <span class="ajuda">(opcional)</span></label>
+          <input id="parceiro" placeholder='ex.: "Germipasto", "32221" ou "Germipasto 32221 Avulso"'>
+          <span class="ajuda">Não precisa ser exato. Em branco roda <b>todas as listas</b> (use o filtro de modelo para restringir).</span>
+          <span class="ajuda" id="contagem"></span>
+        </div>
+        <div class="campo c6"><label for="de">Data inicial</label><input id="de"></div>
+        <div class="campo c6"><label for="ate">Data final</label><input id="ate"></div>
+        <div class="campo"><span class="ajuda">A caça a órfãos e duplicatas olha automaticamente 14 dias para trás da Data inicial.</span></div>
+        <div class="campo">
+          <label for="modelo">Modelo de projetos</label>
+          <select id="modelo"></select>
+          <span class="ajuda">Filtra as listas pelo modelo do projeto vinculado no Experience. "Todos" mantém o comportamento de sempre.</span>
+        </div>
+      </div>
+      <div class="acoes"><button class="btn" id="btn-executar">Executar sincronização</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Log de execução</h2>
+      <pre class="log alto" id="log"></pre>
+      <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+      <div class="arquivos" id="arquivos"></div>
+    </section>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, esc, toast, confirmar, mascaraData, dataValida } = BPMS;
+  BPMS.montarTopo("sync");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  [$("#de"), $("#ate")].forEach(mascaraData);
+  let ultimaContagem = null, geracao = 0, tempo;
+
+  function contar() {
+    clearTimeout(tempo);
+    tempo = setTimeout(async () => {
+      const g = ++geracao, c = $("#contagem");
+      c.className = "ajuda"; c.textContent = "Verificando listas que batem no ClickUp…";
+      try {
+        const r = await get(`/api/sync/contar?texto=${encodeURIComponent($("#parceiro").value.trim())}`);
+        if (g !== geracao) return;
+        ultimaContagem = r;
+        if (r.total) { c.textContent = `${r.total} lista(s) do ClickUp batem com esse filtro (contagem por nome, antes do filtro de modelo e da confirmação no Experience).`; }
+        else { c.className = "ajuda erro"; c.textContent = "Nenhuma lista do ClickUp bate com esse texto — confira a digitação."; }
+      } catch (e) {
+        if (g !== geracao) return;
+        ultimaContagem = null; c.className = "ajuda erro"; c.textContent = "Não foi possível verificar agora (falha ao consultar o ClickUp).";
+      }
+    }, 500);
+  }
+  $("#parceiro").addEventListener("input", contar);
+
+  const travar = (sim) => { $("#btn-executar").disabled = sim; };
+
+  $("#btn-executar").onclick = async () => {
+    const corpo = { parceiro: $("#parceiro").value.trim(), de: $("#de").value, ate: $("#ate").value, modelo: $("#modelo").value };
+    if (!dataValida(corpo.de)) return toast("Data inicial fora do formato DD/MM/AAAA.", "erro");
+    if (!dataValida(corpo.ate)) return toast("Data final fora do formato DD/MM/AAAA.", "erro");
+    const rotuloModelo = $("#modelo").selectedOptions[0]?.textContent || "Todos";
+    const listas = ultimaContagem && ultimaContagem.total
+      ? `<br><b>${ultimaContagem.total}</b> lista(s) pelo nome${ultimaContagem.listas.length ? `:<ul>${ultimaContagem.listas.map((l) => `<li>${esc(l)}</li>`).join("")}${ultimaContagem.total > ultimaContagem.listas.length ? "<li>…</li>" : ""}</ul>` : ""}` : "";
+    const todas = !corpo.parceiro;
+    const ok = await confirmar("Executar a sincronização?",
+      `<b>Parceiro:</b> ${todas ? "<b>TODOS os parceiros</b>" : esc(corpo.parceiro)}<br><b>Período:</b> ${esc(corpo.de)} a ${esc(corpo.ate)}<br><b>Modelo:</b> ${esc(rotuloModelo)}${listas}`
+      + `<div class="aviso${todas ? " erro" : ""}">Vai <b>criar, alterar e excluir</b> apontamentos no Experience (inclusive órfãos e duplicatas) conforme o ClickUp.</div>`,
+      { botao: "Executar", perigo: todas });
+    if (!ok) return;
+    travar(true);
+    BPMS.iniciar("/api/sync/executar", { ...corpo, confirmar: true }, el, () => travar(false));
+  };
+
+  (async () => {
+    try {
+      const o = await get("/api/sync/opcoes");
+      $("#modelo").innerHTML = o.modelos.map((m) => `<option value="${esc(m.valor)}">${esc(m.rotulo)}</option>`).join("");
+      $("#modelo").value = o.modelo; $("#parceiro").value = o.parceiro; $("#de").value = o.de; $("#ate").value = o.ate;
+      contar();
+    } catch (e) { toast(e.message, "erro"); }
+    BPMS.retomar(["sync"], el, () => travar(false), () => travar(true));
+  })();
+})();
+</script>
+</body>
+</html>

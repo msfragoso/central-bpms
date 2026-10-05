@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lançar ClickUp</title>
+<link rel="stylesheet" href="assets/padrao.css">
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="lancar.titulo">Lançar tarefa no ClickUp</h1>
+      <p data-texto="lancar.subtitulo">Espaço PMO BP-MS · lista Avulso do parceiro · subtarefa do mês</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="lancar"></span>
+  </div>
+
+  <div class="grade duas">
+    <section class="card faixa">
+      <h2>Demanda</h2>
+      <div class="campos">
+        <div class="campo">
+          <label for="parceiro">1. Parceiro</label>
+          <input id="parceiro" placeholder="digite para buscar">
+        </div>
+        <div class="campo">
+          <label for="fap">FAP (lista avulso)</label>
+          <div class="linha-campo">
+            <select id="fap" disabled><option value="">(selecione o parceiro)</option></select>
+            <button class="btn secundario icone" id="btn-fap-recarregar" title="Buscar FAPs de novo">⟳</button>
+          </div>
+          <span class="ajuda" id="fap-info"></span>
+        </div>
+        <div class="campo c6">
+          <label for="origem">2. Origem da demanda</label>
+          <select id="origem"><option value=""></option></select>
+        </div>
+        <div class="campo c6">
+          <label for="usuario">4. Usuário cliente <span class="ajuda">(opcional)</span></label>
+          <input id="usuario">
+        </div>
+        <div class="campo">
+          <label for="titulo">3. Título da tarefa</label>
+          <input id="titulo">
+        </div>
+        <div class="campo">
+          <label for="responsavel">5. Responsável / consultor <span class="ajuda">(opcional)</span></label>
+          <input id="responsavel" placeholder="digite para buscar">
+          <span class="ajuda" id="resp-info">(carregando…)</span>
+        </div>
+        <div class="campo c6">
+          <label for="vencimento">6. Vencimento <span class="ajuda">(opcional)</span></label>
+          <input id="vencimento">
+          <div class="atalhos">
+            <button class="btn secundario pequeno" data-dias="0">Hoje</button>
+            <button class="btn secundario pequeno" data-dias="1">Amanhã</button>
+            <button class="btn secundario pequeno" data-dias="7">+7d</button>
+            <button class="btn secundario pequeno" data-dias="x">✕</button>
+          </div>
+          <span class="ajuda" id="venc-info">Sem data, a tarefa entra como "backlog base".</span>
+        </div>
+        <div class="campo c6">
+          <label for="periodo">7. Período <span class="ajuda">(opcional)</span></label>
+          <input id="periodo" placeholder="ex.: 08h-10h">
+        </div>
+      </div>
+    </section>
+
+    <section class="card faixa">
+      <h2>8. Detalhamento</h2>
+      <textarea id="detalhamento" rows="14" placeholder="Cole o texto da demanda aqui"></textarea>
+      <div class="acoes">
+        <button class="btn" id="btn-lancar">Lançar tarefa no ClickUp</button>
+        <button class="btn secundario" id="btn-limpar">Limpar</button>
+      </div>
+      <div class="aviso ok oculto" id="resultado" style="margin-top:14px"></div>
+    </section>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, $$, get, post, esc, toast, confirmar, busca, mascaraData, dataValida, hojeBR } = BPMS;
+  BPMS.montarTopo("lancar");
+
+  let opcoes = { parceiros: [], origens: [], periodos: [], membros: [] };
+  let mapaMembros = {};
+  let faps = [], fapParceiro = null, buscaParceiro, buscaResp, buscaPeriodo;
+
+  mascaraData($("#vencimento"));
+
+  function aplicarMembros(membros) {
+    mapaMembros = {};
+    membros.forEach((m) => { mapaMembros[m.nome] = m.id; });
+    buscaResp.definirOpcoes(Object.keys(mapaMembros));
+  }
+
+  async function carregarFaps(parceiro, forcar = false) {
+    fapParceiro = parceiro; faps = [];
+    const sel = $("#fap"), info = $("#fap-info");
+    sel.innerHTML = "<option>(buscando FAPs…)</option>"; sel.disabled = true;
+    info.className = "ajuda"; info.textContent = "";
+    try {
+      const r = await get(`/api/lancar/faps?parceiro=${encodeURIComponent(parceiro)}${forcar ? "&forcar=1" : ""}`);
+      if (fapParceiro !== parceiro) return;
+      faps = r.faps;
+      if (faps.length === 1) {
+        sel.innerHTML = `<option value="${esc(faps[0].id)}">${esc(faps[0].nome)}</option>`;
+        info.className = "ajuda ok"; info.textContent = "(única FAP ativa)";
+      } else if (faps.length > 1) {
+        sel.innerHTML = `<option value="">(escolha a FAP)</option>` + faps.map((f) => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
+        sel.disabled = false;
+        info.className = "ajuda aviso"; info.textContent = `(${faps.length} FAPs ativas: escolha uma)`;
+      } else {
+        sel.innerHTML = "<option value=\"\">(nenhuma)</option>";
+        info.className = "ajuda erro"; info.textContent = "(nenhuma FAP avulso ativa — confira no ClickUp uma lista com 'Avulso' no nome e sem 'Z' na frente)";
+      }
+    } catch (e) {
+      if (fapParceiro !== parceiro) return;
+      sel.innerHTML = "<option value=\"\">(erro)</option>";
+      info.className = "ajuda erro"; info.textContent = "Erro ao buscar FAPs: " + e.message;
+    }
+  }
+  function resetarFap() {
+    fapParceiro = null; faps = [];
+    $("#fap").innerHTML = "<option value=\"\">(selecione o parceiro)</option>"; $("#fap").disabled = true;
+    $("#fap-info").textContent = "";
+  }
+
+  let tempoParceiro;
+  function aoMudarParceiro() {
+    clearTimeout(tempoParceiro);
+    tempoParceiro = setTimeout(() => {
+      const p = $("#parceiro").value;
+      if (opcoes.parceiros.includes(p)) { if (fapParceiro !== p) carregarFaps(p); }
+      else if (fapParceiro) resetarFap();
+    }, 250);
+  }
+
+  async function iniciar() {
+    try {
+      opcoes = await get("/api/lancar/opcoes");
+    } catch (e) {
+      toast(e.message, "erro"); return;
+    }
+    buscaParceiro = busca($("#parceiro"), opcoes.parceiros, { onEscolher: () => $("#origem").focus() });
+    buscaResp = busca($("#responsavel"), []);
+    buscaPeriodo = busca($("#periodo"), opcoes.periodos, { livre: true });
+    $("#origem").innerHTML = "<option value=\"\"></option>" + opcoes.origens.map((o) => `<option>${esc(o)}</option>`).join("");
+    $("#parceiro").addEventListener("input", aoMudarParceiro);
+    $("#parceiro").addEventListener("change", aoMudarParceiro);
+    if (opcoes.membros.length) { aplicarMembros(opcoes.membros); $("#resp-info").textContent = ""; }
+    const mem = opcoes.memoria || {};
+    $("#parceiro").value = mem.parceiro || ""; $("#origem").value = mem.origem || "";
+    $("#titulo").value = mem.titulo || ""; $("#usuario").value = mem.usuario || "";
+    $("#detalhamento").value = mem.detalhamento || "";
+    aoMudarParceiro();
+    $("#parceiro").focus();
+    // atualiza membros em segundo plano (como a tela Tk)
+    post("/api/lancar/membros").then((r) => { aplicarMembros(r.membros); $("#resp-info").textContent = ""; })
+      .catch(() => { if (!Object.keys(mapaMembros).length) { $("#resp-info").className = "ajuda erro"; $("#resp-info").textContent = "(não carregou a lista)"; } });
+  }
+
+  $("#btn-fap-recarregar").onclick = () => { const p = $("#parceiro").value; if (opcoes.parceiros.includes(p)) carregarFaps(p, true); };
+  $$("[data-dias]").forEach((b) => b.onclick = () => { $("#vencimento").value = b.dataset.dias === "x" ? "" : hojeBR(+b.dataset.dias); });
+
+  $("#periodo").addEventListener("blur", () => setTimeout(async () => {
+    const v = $("#periodo").value.trim();
+    if (!v) return;
+    try { const r = await get(`/api/lancar/periodo?texto=${encodeURIComponent(v)}`); if (r.periodo) $("#periodo").value = r.periodo; } catch (e) { /* ignora */ }
+  }, 200));
+
+  function limpar() {
+    ["#titulo", "#usuario", "#detalhamento", "#parceiro", "#vencimento", "#periodo", "#responsavel"].forEach((s) => $(s).value = "");
+    $("#origem").value = ""; resetarFap();
+  }
+  $("#btn-limpar").onclick = limpar;
+
+  $("#btn-lancar").onclick = async () => {
+    const d = {
+      parceiro: $("#parceiro").value, origem: $("#origem").value, titulo: $("#titulo").value.trim(),
+      usuario: $("#usuario").value.trim(), detalhamento: $("#detalhamento").value.trim(),
+      vencimento: $("#vencimento").value.trim(), periodo: $("#periodo").value.trim(),
+    };
+    if (!d.parceiro || !d.origem || !d.titulo || !d.detalhamento) return toast("Parceiro, Origem, Título e Detalhamento são obrigatórios!", "erro");
+    if (!opcoes.parceiros.includes(d.parceiro)) { $("#parceiro").focus(); return toast(`O parceiro '${d.parceiro}' não é válido. Selecione um da lista!`, "erro"); }
+    const respNome = $("#responsavel").value.trim();
+    if (respNome && !mapaMembros[respNome]) { $("#responsavel").focus(); return toast(`Responsável '${respNome}' não encontrado. Selecione da lista ou deixe em branco.`, "erro"); }
+    if (fapParceiro !== d.parceiro || !faps.length) return toast("Aguarde carregar as FAPs do parceiro (ou confira se ele tem FAP avulso ativa).", "erro");
+    const fapId = $("#fap").value;
+    const fap = faps.find((f) => String(f.id) === fapId);
+    if (!fap) { $("#fap").focus(); return toast(`'${d.parceiro}' tem ${faps.length} FAPs avulso ativas. Selecione em qual delas lançar.`, "erro"); }
+    let venc = null;
+    if (d.vencimento) { venc = dataValida(d.vencimento); if (!venc) { $("#vencimento").focus(); return toast("Data de vencimento inválida. Use dd/mm/aaaa ou deixe em branco.", "erro"); } }
+    if (d.periodo && !venc) { $("#vencimento").focus(); return toast("Período preenchido sem data. Informe o vencimento (dia do atendimento) ou apague o período.", "erro"); }
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const passado = venc && venc < hoje;
+
+    const html = `<ul>
+      <li><b>Parceiro:</b> ${esc(d.parceiro)} — <b>FAP:</b> ${esc(fap.nome)}</li>
+      <li><b>Origem:</b> ${esc(d.origem)}</li><li><b>Título:</b> ${esc(d.titulo)}</li>
+      ${d.usuario ? `<li><b>Usuário:</b> ${esc(d.usuario)}</li>` : ""}
+      ${respNome ? `<li><b>Responsável:</b> ${esc(respNome)}</li>` : ""}
+      <li><b>Vencimento:</b> ${venc ? esc(d.vencimento) : "sem data (backlog base)"}${d.periodo ? ` · <b>Período:</b> ${esc(d.periodo)}` : ""}</li>
+    </ul>${passado ? `<div class="aviso">O vencimento ${esc(d.vencimento)} já passou.</div>` : ""}`;
+    if (!await confirmar("Lançar esta tarefa no ClickUp?", html, { botao: "Lançar" })) return;
+
+    const btn = $("#btn-lancar");
+    btn.disabled = true; btn.textContent = "Lançando… aguarde";
+    try {
+      const r = await post("/api/lancar", { ...d, fap_id: fap.id, responsavel_id: respNome ? mapaMembros[respNome] : null, confirmar: true });
+      const extra = [`FAP: ${fap.nome}`, respNome && `Responsável: ${respNome}`, r.vencimento && `Vencimento: ${r.vencimento}`, r.periodo && `Período: ${r.periodo}`].filter(Boolean);
+      const res = $("#resultado");
+      res.innerHTML = `<b>Tarefa '${esc(d.titulo)}' lançada com sucesso!</b><br>${extra.map(esc).join("<br>")}<br>Tag no ClickUp: <b>#${esc(r.task_id)}</b>`
+        + (r.avisos.length ? `<br><br>${r.avisos.map(esc).join("<br>")}` : "");
+      res.classList.remove("oculto");
+      toast("Tarefa lançada.", "ok");
+      ["#titulo", "#usuario", "#detalhamento", "#parceiro", "#vencimento", "#periodo", "#responsavel"].forEach((s) => $(s).value = "");
+      $("#origem").value = ""; resetarFap(); BPMS.atualizarPilula();
+    } catch (e) {
+      BPMS.informar("Erro ao lançar", `Ocorreu um problema no ClickUp:<br><br>${esc(e.message)}`);
+    } finally {
+      btn.disabled = false; btn.textContent = "Lançar tarefa no ClickUp";
+    }
+  };
+
+  iniciar();
+})();
+</script>
+</body>
+</html>

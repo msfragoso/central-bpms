@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apontamentos travados</title>
+<link rel="stylesheet" href="assets/padrao.css">
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="fase3.titulo">Apontamentos travados (Fase 3)</h1>
+      <p data-texto="fase3.subtitulo">OS travadas fora do prazo de 3 dias úteis · só lê o Sankhya/ClickUp · escreve na planilha Google</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="fase3"></span>
+  </div>
+
+  <div class="grade duas">
+    <section class="card faixa">
+      <h2>Parâmetros</h2>
+      <div class="campos">
+        <div class="campo c6"><label for="de">De (data de execução)</label><input id="de"></div>
+        <div class="campo c6"><label for="ate">Até</label><input id="ate"></div>
+        <div class="campo"><span class="ajuda" id="aba">Aba de destino: …</span></div>
+        <div class="campo">
+          <label for="url">URL do Apps Script (/exec)</label>
+          <div class="linha-campo">
+            <input id="url" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+            <button class="btn secundario" id="btn-testar">Testar conexão</button>
+          </div>
+        </div>
+        <div class="campo"><label class="checar"><input type="checkbox" id="enviar" checked> Enviar para a planilha Google</label></div>
+      </div>
+      <div class="acoes"><button class="btn" id="btn-executar">Executar</button></div>
+      <div class="aviso ok oculto" id="resumo" style="margin-top:14px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <pre class="log" id="log"></pre>
+      <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+      <div class="arquivos" id="arquivos"></div>
+    </section>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, esc, toast, confirmar, mascaraData } = BPMS;
+  BPMS.montarTopo("fase3");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  [$("#de"), $("#ate")].forEach(mascaraData);
+
+  let tempoAba;
+  function atualizarAba() {
+    clearTimeout(tempoAba);
+    tempoAba = setTimeout(async () => {
+      try {
+        const r = await get(`/api/fase3/aba?de=${encodeURIComponent($("#de").value)}&ate=${encodeURIComponent($("#ate").value)}`);
+        $("#aba").textContent = r.aba ? `Aba de destino: ${r.aba}` : "Aba de destino: (datas incompletas)";
+      } catch (e) { /* ignora */ }
+    }, 250);
+  }
+  $("#de").addEventListener("input", atualizarAba);
+  $("#ate").addEventListener("input", atualizarAba);
+
+  function travar(sim) { $("#btn-executar").disabled = sim; $("#btn-testar").disabled = sim; }
+  function aoTerminar(t) {
+    travar(false);
+    if (t && t.resultado) {
+      const r = t.resultado.resumo, p = t.resultado.planilha;
+      $("#resumo").innerHTML = `Travadas no período: <b>${r.travadas}</b> · Ainda no prazo: <b>${r.no_prazo}</b> · Fora do prazo: <b>${r.fora}</b>`
+        + (p ? `<br>Planilha (${esc(p.aba)}): <b>${p.inseridas}</b> nova(s), ${p.ja_existiam} já existiam${p.criada ? " (aba criada agora)" : ""}.` : "");
+      $("#resumo").classList.remove("oculto");
+    }
+  }
+
+  $("#btn-testar").onclick = async () => {
+    if (!$("#url").value.trim()) return toast("Cole a URL do Apps Script primeiro.", "erro");
+    $("#btn-testar").disabled = true;
+    try { const r = await post("/api/fase3/testar", { url: $("#url").value }); toast(`Conectado à planilha: ${r.planilha}`, "ok"); }
+    catch (e) { toast("Falha na conexão: " + e.message, "erro"); }
+    finally { $("#btn-testar").disabled = false; }
+  };
+
+  $("#btn-executar").onclick = async () => {
+    const enviar = $("#enviar").checked;
+    const corpo = { de: $("#de").value, ate: $("#ate").value, url: $("#url").value, enviar };
+    if (!BPMS.dataValida(corpo.de) || !BPMS.dataValida(corpo.ate)) return toast("Use DD/MM/AAAA e 'De' menor ou igual a 'Até'.", "erro");
+    if (enviar) {
+      if (!corpo.url.trim()) return toast("Cole a URL do Apps Script ou desmarque o envio.", "erro");
+      const ok = await confirmar("Enviar para a planilha Google?",
+        `Período <b>${esc(corpo.de)}</b> a <b>${esc(corpo.ate)}</b><br>${esc($("#aba").textContent)}<br><br>As linhas novas são acrescentadas na aba (nada é apagado nem sobrescrito). Nada é escrito no Sankhya nem no ClickUp.`,
+        { botao: "Executar e enviar" });
+      if (!ok) return;
+      corpo.confirmar = true;
+    }
+    travar(true); $("#resumo").classList.add("oculto");
+    BPMS.iniciar("/api/fase3/executar", corpo, el, aoTerminar);
+  };
+
+  (async () => {
+    try {
+      const o = await get("/api/fase3/opcoes");
+      $("#de").value = o.de; $("#ate").value = o.ate; $("#url").value = o.url; $("#aba").textContent = `Aba de destino: ${o.aba}`;
+    } catch (e) { toast(e.message, "erro"); }
+    BPMS.retomar(["fase3"], el, aoTerminar, () => travar(true));
+  })();
+})();
+</script>
+</body>
+</html>

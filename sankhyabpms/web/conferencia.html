@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conferência de OS</title>
+<link rel="stylesheet" href="assets/padrao.css">
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="conferencia.titulo">Conferência de OS</h1>
+      <p data-texto="conferencia.subtitulo">ClickUp × Sankhya Experience · relatório HTML · atualização opcional do ClickUp</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="conferencia"></span>
+  </div>
+
+  <div class="grade duas">
+    <section class="card faixa">
+      <h2>Parâmetros</h2>
+      <div class="aviso oculto" id="aviso-api">Módulos da API do Sankhya não encontrados — selecione um Excel já baixado.</div>
+      <div class="campos">
+        <div class="campo c6"><label for="de">Data inicial</label><input id="de"></div>
+        <div class="campo c6"><label for="ate">Data final</label><input id="ate"></div>
+        <div class="campo"><span class="ajuda">O período também é usado pela Borracha Mágica.</span></div>
+        <div class="campo">
+          <label for="clickup">CSV do ClickUp <span class="ajuda">(obrigatório)</span></label>
+          <input type="file" id="clickup" accept=".csv">
+        </div>
+        <div class="campo">
+          <label for="sankhya">Excel do Sankhya <span class="ajuda">(opcional — em branco, lê direto do Experience)</span></label>
+          <input type="file" id="sankhya" accept=".xlsx,.xls">
+        </div>
+        <div class="campo">
+          <label for="destino">Pasta destino do relatório</label>
+          <input id="destino">
+        </div>
+        <div class="campo c6">
+          <label for="consultor">Filtrar por consultor</label>
+          <select id="consultor"></select>
+        </div>
+        <div class="campo c6" style="justify-content:flex-end">
+          <label class="checar"><input type="checkbox" id="atualizar"> Atualizar status e campos no ClickUp</label>
+        </div>
+      </div>
+      <div class="acoes">
+        <button class="btn" id="btn-conferir">Iniciar conferência</button>
+        <span class="espaco"></span>
+        <button class="btn perigo" id="btn-borracha">🧹 Passar borracha</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <pre class="log alto" id="log"></pre>
+      <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+      <div class="arquivos" id="arquivos"></div>
+    </section>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, esc, toast, confirmar, mascaraData, dataValida, arquivoBase64 } = BPMS;
+  BPMS.montarTopo("conferencia");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  [$("#de"), $("#ate")].forEach(mascaraData);
+
+  function travar(sim) { $("#btn-conferir").disabled = sim; $("#btn-borracha").disabled = sim; }
+  const aoTerminar = () => travar(false);
+
+  async function enviarArquivo(input) {
+    const f = input.files[0];
+    if (!f) return null;
+    el.statusTexto.textContent = `Enviando ${f.name}…`;
+    const r = await post("/api/upload", { nome: f.name, conteudo_b64: await arquivoBase64(f) });
+    return r.id;
+  }
+
+  function periodoOk() {
+    if (!dataValida($("#de").value) || !dataValida($("#ate").value)) { toast("Preencha a Data inicial e a Data final no formato DD/MM/AAAA.", "erro"); return false; }
+    return true;
+  }
+
+  $("#btn-conferir").onclick = async () => {
+    if (!periodoOk()) return;
+    if (!$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
+    const atualizar = $("#atualizar").checked;
+    if (atualizar && !await confirmar("Atualizar o ClickUp?",
+      "Depois de gerar o relatório, a conferência vai <b>gravar status, OS Sankhya, observações e tempo rastreado</b> nas tarefas do ClickUp que bateram.",
+      { botao: "Conferir e atualizar" })) return;
+    travar(true);
+    try {
+      const corpo = {
+        de: $("#de").value, ate: $("#ate").value, destino: $("#destino").value, consultor: $("#consultor").value,
+        atualizar_clickup: atualizar, clickup_id: await enviarArquivo($("#clickup")), sankhya_id: await enviarArquivo($("#sankhya")),
+      };
+      if (atualizar) corpo.confirmar = true;
+      BPMS.iniciar("/api/conferencia/executar", corpo, el, aoTerminar);
+    } catch (e) { toast(e.message, "erro"); travar(false); }
+  };
+
+  $("#btn-borracha").onclick = async () => {
+    if (!periodoOk()) return;
+    if (!$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
+    const ok = await confirmar("Confirmar Borracha Mágica",
+      `⚠ <b>ATENÇÃO!</b><br><br>Você está prestes a limpar <b>TODO o tempo rastreado</b>, apagar a <b>OS Sankhya</b> e resetar o <b>Status</b> de todas as tarefas do CSV entre <b>${esc($("#de").value)}</b> e <b>${esc($("#ate").value)}</b>.<br><br>Não tem como desfazer. Tem certeza?`,
+      { botao: "Passar a borracha", perigo: true });
+    if (!ok) return;
+    travar(true);
+    try {
+      const corpo = { de: $("#de").value, ate: $("#ate").value, clickup_id: await enviarArquivo($("#clickup")), confirmar: true };
+      BPMS.iniciar("/api/conferencia/borracha", corpo, el, aoTerminar);
+    } catch (e) { toast(e.message, "erro"); travar(false); }
+  };
+
+  (async () => {
+    try {
+      const o = await get("/api/conferencia/opcoes");
+      $("#consultor").innerHTML = o.consultores.map((c) => `<option>${esc(c)}</option>`).join("");
+      $("#destino").value = o.destino;
+      if (!o.sankhya_api) $("#aviso-api").classList.remove("oculto");
+    } catch (e) { toast(e.message, "erro"); }
+    BPMS.retomar(["conferencia", "borracha"], el, aoTerminar, () => travar(true));
+  })();
+})();
+</script>
+</body>
+</html>

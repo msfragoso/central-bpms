@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central BP-MS</title>
+<link rel="stylesheet" href="assets/padrao.css">
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="inicio.titulo">Central BP-MS</h1>
+      <p data-texto="inicio.subtitulo">Todos os processos do PMO num lugar só.</p>
+    </div>
+    <div class="legenda"><span>roda no seu PC</span><span class="claude">abre no Claude</span></div>
+  </div>
+
+  <div class="processos">
+    <section class="card faixa processo">
+      <h3><span data-texto="card.lancar.titulo">Lançar tarefa no ClickUp</span> <small class="ultimo-uso" data-ultimo-uso="lancar"></small></h3>
+      <p data-texto="card.lancar.descricao">Demanda avulsa de parceiro: escolhe a FAP, preenche os campos padrão do PMO e cria a tarefa na subtarefa do mês.</p>
+      <div class="acoes"><a class="btn" href="lancar.html">Abrir</a></div>
+    </section>
+
+    <section class="card faixa processo">
+      <h3><span data-texto="card.sync.titulo">Sync tarefa ClickUp ⇄ Experience</span> <small class="ultimo-uso" data-ultimo-uso="sync"></small></h3>
+      <p data-texto="card.sync.descricao">Lança, altera e exclui as tarefas do ClickUp no Experience, com log ao vivo.</p>
+      <div class="acoes"><a class="btn" href="sync.html">Abrir</a></div>
+    </section>
+
+    <section class="card faixa processo">
+      <h3><span data-texto="card.conferencia.titulo">Conferência de OS</span> <small class="ultimo-uso" data-ultimo-uso="conferencia"></small></h3>
+      <p data-texto="card.conferencia.descricao">Cruza os apontamentos de OSs no Experience com as tarefas lançadas no ClickUp. Gera o relatório HTML e, se marcado, atualiza status e campos no ClickUp. Inclui a Borracha Mágica.</p>
+      <div class="acoes"><a class="btn" href="conferencia.html">Abrir</a></div>
+    </section>
+
+    <section class="card faixa processo">
+      <h3><span data-texto="card.fase3.titulo">Apontamentos travados</span> <small class="ultimo-uso" data-ultimo-uso="fase3"></small></h3>
+      <p data-texto="card.fase3.descricao">Fase 3: OS travadas fora do prazo de 3 dias úteis no ciclo, com envio para a planilha Google.</p>
+      <div class="acoes"><a class="btn" href="fase3.html">Abrir</a></div>
+    </section>
+
+    <section class="card faixa processo">
+      <h3><span data-texto="card.aceite.titulo">Aceite de OS</span> <small class="ultimo-uso" data-ultimo-uso="aceite"></small></h3>
+      <p data-texto="card.aceite.descricao">Confere as FAPs do período (só leitura) e envia o aceite das marcadas — o e-mail sai do Experience para o cliente.</p>
+      <div class="acoes"><a class="btn" href="aceite.html">Abrir</a></div>
+    </section>
+
+    <section class="card faixa claude processo">
+      <h3><span data-texto="card.agenda.titulo">Agenda semanal dos parceiros</span></h3>
+      <p data-texto="card.agenda.descricao">Monta a Confirmação da Agenda de Serviço da próxima semana.</p>
+      <div class="acoes"><button class="btn claude" id="btn-agenda">Abrir no Claude</button></div>
+    </section>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+  BPMS.montarTopo("inicio");
+  function abrirClaude(pedido) {
+    navigator.clipboard?.writeText(pedido).catch(() => {});
+    window.open("https://claude.ai/new?q=" + encodeURIComponent(pedido), "_blank", "noopener");
+  }
+  BPMS.$("#btn-agenda").onclick = () => abrirClaude("Envia a agenda da semana para os parceiros.");
+</script>
+</body>
+</html>
