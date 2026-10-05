@@ -196,6 +196,6 @@ td.centro, th.centro { text-align: center; }
 .login .erro { color: var(--perigo); font-size: 13px; min-height: 1.2em; margin: 0; }
 
 /* atalhos da página inicial */
-.atalhos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-.atalhos a { font-weight: 600; font-size: 13px; padding: 7px 14px; border: 1px solid var(--linha); border-radius: 8px; background: var(--card); color: var(--texto); text-decoration: none; }
-.atalhos a:hover, .atalhos a:focus-visible { border-color: var(--local); color: var(--local); }
+nav.links-sankhya { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+nav.links-sankhya a { font-weight: 600; font-size: 13px; padding: 7px 14px; border: 1px solid var(--linha); border-radius: 8px; background: var(--card); color: var(--texto); text-decoration: none; }
+nav.links-sankhya a:hover, nav.links-sankhya a:focus-visible { border-color: var(--local); color: var(--local); }
