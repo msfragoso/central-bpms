@@ -33,8 +33,9 @@ CONFIG = BASE / "config_central.json"
 LOG = BASE / "servidor_local.log"
 
 PADRAO = {
-    "pasta_lancador": "",  # pasta com lancar_tarefas_clickup.py (descoberta sozinha)
+    "pasta_lancador": r"C:\sankhya_integracao\clickup_tasks",  # pasta do lancar_tarefas_clickup.py
     "acoes": {
+        "clickup_tela": r"C:\sankhya_integracao\clickup_tasks\Rodar_Tasks.bat",
         "experience": "",
         "conferencia": r"C:\sankhya_integracao\conferencia_os\Rodar_Conferencia.bat",
         "travados": r"C:\sankhya_integracao\conferencia_os\Rodar_Fase3.vbs",

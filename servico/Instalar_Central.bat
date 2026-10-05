@@ -9,7 +9,8 @@ if not exist "%~dp0servidor_local.py" (
 )
 copy /Y "%~dp0servidor_local.py" "%DEST%\servidor_local.py" >nul
 set PYW=
-for /f "delims=" %%P in ('where pythonw 2^>nul') do if not defined PYW set PYW=%%P
+if exist "%LOCALAPPDATA%\Python\bin\pythonw.exe" set PYW=%LOCALAPPDATA%\Python\bin\pythonw.exe
+if not defined PYW for /f "delims=" %%P in ('where pythonw 2^>nul') do if not defined PYW set PYW=%%P
 if not defined PYW (
   echo Nao encontrei o pythonw. Instale o Python e rode de novo.
   pause
