@@ -52,6 +52,20 @@ Na tela do Sync: lista os lançamentos PENDING (sem OS) do Experience no períod
 só de projetos Em Andamento, com opção de excluir os marcados (só no Experience;
 o ClickUp não é alterado). Cada exclusão fica em `log_exclusoes_orfaos.jsonl`.
 
+## Agenda semanal dos parceiros
+
+Tela "Agenda semanal" (`web/agenda.html`, `servico/app_agenda.py`): lê a
+visualização "Agrupado p/Enviar" do ClickUp (próxima semana), aplica as regras da
+skill (sem "Planejamento", sem tarefas da gestão interna, X-Horas Cruzadas,
+X-Interno e Energe desmarcados), casa os parceiros com a planilha de contatos
+(`G:\Meu Drive\PROJETOS\Contatos(e-mails) dos Parceiros para Envio de Agenda.xlsx`),
+mostra a prévia no layout aprovado (`servico/agenda_layout.py`, copiado da skill) e
+envia pelo Gmail com a senha de app do cofre do Windows (chave GMAIL_APP_PASSWORD).
+"Enviar teste para mim" manda só para o remetente; o envio real pede confirmação e
+fica registrado em `dados/agenda_envios.jsonl`.
+
+Erros do serviço (que roda sem janela) ficam em `dados/servico.log`.
+
 ## Editar os textos das telas
 
 Botão **✎** no topo de qualquer tela: os títulos, descrições e itens do menu

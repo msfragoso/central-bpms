@@ -22,6 +22,7 @@ import nucleo  # noqa: E402
 from nucleo import CONFIG, PASTA_WEB, ErroUsuario, Ocupado, Requisicao, para_json, resolver_rota  # noqa: E402
 
 nucleo.preparar_sys_path()
+nucleo.instalar_log_de_erros()
 nucleo.instalar_roteador()
 
 import rotas_tarefas  # noqa: E402,F401  (registram as rotas ao importar)
@@ -32,6 +33,7 @@ import app_conferencia  # noqa: E402,F401
 import app_aceite  # noqa: E402,F401
 import app_sync  # noqa: E402,F401
 import app_om  # noqa: E402,F401
+import app_agenda  # noqa: E402,F401
 
 PORTA = int(CONFIG.get("porta") or 8766)
 HOSTS_OK = {f"127.0.0.1:{PORTA}", f"localhost:{PORTA}"}

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agenda semanal</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<script src="assets/login.js"></script>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="agenda.titulo">Agenda semanal dos parceiros</h1>
+      <p data-texto="agenda.subtitulo">Confirmação da Agenda de Serviço · visualização "Agrupado p/Enviar" do ClickUp · enviado pelo seu Gmail</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="agenda"></span>
+  </div>
+
+  <section class="card faixa">
+    <h2>Semana</h2>
+    <div class="campos">
+      <div class="campo c3"><label for="de">De</label><input id="de"></div>
+      <div class="campo c3"><label for="ate">Até</label><input id="ate"></div>
+      <div class="campo c6"><span class="ajuda" id="planilha" style="margin-top:22px"></span></div>
+    </div>
+    <div class="acoes"><button class="btn" id="btn-montar">Montar agenda (só leitura)</button></div>
+  </section>
+
+  <section class="card oculto" id="card-parceiros" style="margin-top:14px">
+    <h2>Parceiros <span class="ajuda" id="contagem"></span></h2>
+    <p class="ajuda" style="color:var(--suave);font-size:12px;margin:-4px 0 10px">Confira os e-mails (dá para editar Para e Cc aqui, sem mudar a planilha). Clique no nome para ver o e-mail.</p>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr><th class="centro">Enviar</th><th>Parceiro</th><th class="centro">Tarefas</th><th>Para</th><th>Cc</th><th>Situação</th></tr></thead>
+        <tbody id="corpo"></tbody>
+      </table>
+    </div>
+    <div class="acoes">
+      <button class="btn secundario" id="btn-teste">Enviar teste para mim</button>
+      <span class="espaco"></span>
+      <button class="btn perigo" id="btn-enviar" disabled>Enviar para os marcados</button>
+    </div>
+    <div id="removidas" class="ajuda" style="color:var(--suave);font-size:12px;margin-top:8px"></div>
+  </section>
+
+  <section class="card oculto" id="card-previa" style="margin-top:14px">
+    <h2>Prévia do e-mail <span class="ajuda" id="previa-titulo"></span></h2>
+    <iframe id="previa" title="Prévia do e-mail" sandbox="" style="width:100%;height:560px;border:1px solid var(--linha);border-radius:8px;background:#e5e7eb"></iframe>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <h2>Log</h2>
+    <pre class="log" id="log"></pre>
+    <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+    <div class="arquivos" id="arquivos"></div>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, $$, get, post, esc, toast, confirmar, mascaraData, dataValida } = BPMS;
+  BPMS.montarTopo("agenda");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  [$("#de"), $("#ate")].forEach(mascaraData);
+  let parceiros = [], situacao = {}, ocupado = false;
+
+  const lista = (v) => (Array.isArray(v) ? v.join(", ") : v || "");
+  function desenhar() {
+    $("#corpo").innerHTML = parceiros.map((p, i) => {
+      const sit = situacao[p.parceiro];
+      return `<tr class="${sit === "ENVIADO" ? "pronta" : sit === "FALHOU" ? "bloqueada" : p.enviar ? "" : "vazia"}">
+        <td class="centro">${sit === "ENVIADO" ? "✓" : `<input type="checkbox" data-i="${i}" ${p.enviar ? "checked" : ""} aria-label="Enviar para ${esc(p.parceiro)}">`}</td>
+        <td><a href="#" data-previa="${i}">${esc(p.parceiro)}</a>${p.nome_planilha && p.nome_planilha !== p.parceiro.toUpperCase() ? `<br><span style="color:var(--suave);font-size:11px">planilha: ${esc(p.nome_planilha)}</span>` : ""}</td>
+        <td class="centro">${p.tarefas}</td>
+        <td><input data-para="${i}" value="${esc(lista(p.para))}" placeholder="(sem e-mail)" style="min-width:220px"></td>
+        <td><input data-cc="${i}" value="${esc(lista(p.cc))}" placeholder="—" style="min-width:220px"></td>
+        <td>${sit ? `<span class="etiqueta ${sit === "ENVIADO" ? "enviada" : "falhou"}">${esc(sit)}</span>` : p.motivo ? `<span style="color:var(--suave)">${esc(p.motivo)}</span>` : ""}</td></tr>`;
+    }).join("") || `<tr><td colspan="6" class="vazio-tabela">Nenhuma tarefa na semana.</td></tr>`;
+    const marcados = parceiros.filter((p) => p.enviar && !situacao[p.parceiro]).length;
+    $("#contagem").textContent = `${parceiros.length} parceiro(s) · ${marcados} marcado(s) para envio`;
+    $("#btn-enviar").disabled = ocupado || !marcados;
+    $("#btn-teste").disabled = ocupado || !parceiros.length;
+  }
+  $("#corpo").addEventListener("change", (e) => {
+    const t = e.target;
+    if (t.dataset.i !== undefined) parceiros[+t.dataset.i].enviar = t.checked;
+    if (t.dataset.para !== undefined) parceiros[+t.dataset.para].para = t.value;
+    if (t.dataset.cc !== undefined) parceiros[+t.dataset.cc].cc = t.value;
+    desenhar();
+  });
+  $("#corpo").addEventListener("click", async (e) => {
+    const a = e.target.closest("[data-previa]"); if (!a) return;
+    e.preventDefault();
+    const p = parceiros[+a.dataset.previa];
+    try {
+      const r = await post("/api/agenda/previa", { parceiro: p.parceiro, para: lista(p.para), cc: lista(p.cc) });
+      $("#previa").srcdoc = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#e5e7eb">${r.html}</body>`;
+      $("#previa-titulo").textContent = "· " + p.parceiro;
+      $("#card-previa").classList.remove("oculto");
+      $("#card-previa").scrollIntoView({ behavior: "smooth" });
+    } catch (err) { toast(err.message, "erro"); }
+  });
+
+  const travar = (sim) => { ocupado = sim; $("#btn-montar").disabled = sim; desenhar(); };
+  const aoMontar = (t) => {
+    travar(false);
+    if (t && t.resultado) {
+      parceiros = t.resultado.parceiros; situacao = {};
+      $("#card-parceiros").classList.remove("oculto");
+      $("#removidas").innerHTML = t.resultado.removidas.length ? "<b>Fora do e-mail pelas regras:</b> " + t.resultado.removidas.map(esc).join(" · ") : "";
+      desenhar();
+    }
+  };
+  $("#btn-montar").onclick = () => {
+    if (!dataValida($("#de").value) || !dataValida($("#ate").value)) return toast("Use datas no formato DD/MM/AAAA.", "erro");
+    travar(true);
+    BPMS.iniciar("/api/agenda/montar", { de: $("#de").value, ate: $("#ate").value }, el, aoMontar);
+  };
+
+  $("#btn-teste").onclick = async () => {
+    const p = parceiros.find((x) => x.enviar) || parceiros[0];
+    if (!p) return;
+    if (!await confirmar("Enviar e-mail de teste?", `Envia <b>um</b> e-mail com a agenda de <b>${esc(p.parceiro)}</b> <b>só para você</b> (remetente), com "[TESTE]" no assunto. Nenhum parceiro recebe.`, { botao: "Enviar teste" })) return;
+    travar(true);
+    BPMS.iniciar("/api/agenda/teste", { parceiros: [{ parceiro: p.parceiro }], confirmar: true }, el, () => travar(false));
+  };
+
+  $("#btn-enviar").onclick = async () => {
+    const sel = parceiros.filter((p) => p.enviar && !situacao[p.parceiro]);
+    const semEmail = sel.filter((p) => !lista(p.para).trim());
+    if (semEmail.length) return toast("Sem e-mail (Para): " + semEmail.map((p) => p.parceiro).join(", "), "erro");
+    const ok = await confirmar(`Enviar a agenda para ${sel.length} parceiro(s)?`,
+      `<ul>${sel.map((p) => `<li><b>${esc(p.parceiro)}</b> (${p.tarefas} tarefa(s)) — Para: ${esc(lista(p.para))}${lista(p.cc) ? ` · Cc: ${esc(lista(p.cc))}` : ""}</li>`).join("")}</ul>`
+      + `<div class="aviso erro">Os e-mails saem de verdade do seu Gmail para os parceiros, com um intervalo entre eles. Não tem como desfazer.</div>`,
+      { botao: "Enviar", perigo: true });
+    if (!ok) return;
+    travar(true);
+    BPMS.iniciar("/api/agenda/enviar", { parceiros: sel.map((p) => ({ parceiro: p.parceiro, para: lista(p.para), cc: lista(p.cc) })), confirmar: true },
+      el, (t) => { travar(false); if (t && t.resultado) { Object.assign(situacao, t.resultado.situacao); desenhar(); } });
+  };
+
+  (async () => {
+    try { const o = await get("/api/agenda/opcoes"); $("#de").value = o.de; $("#ate").value = o.ate; $("#planilha").textContent = "Contatos: " + o.planilha; }
+    catch (e) { toast(e.message, "erro"); }
+    BPMS.retomar(["agenda_montar", "agenda_teste", "agenda_enviar"], el, (t) => (t && t.tipo === "agenda_montar" ? aoMontar(t) : travar(false)), () => travar(true));
+  })();
+})();
+</script>
+</body>
+</html>

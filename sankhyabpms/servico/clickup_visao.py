@@ -49,10 +49,10 @@ def _ms(d, fim=False):
     return int(datetime(dia.year, dia.month, dia.day, tzinfo=FUSO).timestamp() * 1000)
 
 
-def _filtros_da_visao(api, headers):
-    vw = _get(f"{api}/view/{VIEW_ID}", headers)["view"]
+def _filtros_da_visao(api, headers, view_id=VIEW_ID):
+    vw = _get(f"{api}/view/{view_id}", headers)["view"]
     space_id = (vw.get("parent") or {}).get("id")
-    incluir_qualquer, excluir = {}, {}
+    incluir_qualquer, excluir, preenchidos = {}, {}, set()
     for f in (vw.get("filters") or {}).get("fields", []):
         campo = f.get("field", "")
         if not campo.startswith("cf_"):
@@ -62,7 +62,9 @@ def _filtros_da_visao(api, headers):
             incluir_qualquer[cf] = set(map(str, f.get("values") or []))
         elif f.get("op") == "NOT":
             excluir[cf] = set(map(str, f.get("values") or []))
-    return space_id, incluir_qualquer, excluir, bool((vw.get("filters") or {}).get("show_closed", True))
+        elif f.get("op") == "IS SET":
+            preenchidos.add(cf)
+    return space_id, incluir_qualquer, excluir, preenchidos, bool((vw.get("filters") or {}).get("show_closed", True))
 
 
 def _valor_dropdown(cf):
@@ -108,9 +110,18 @@ def _tempo_logado(ms):
     return " ".join(p for p in (f"{h}h" if h else "", f"{m}m" if m else "") if p) or None
 
 
-def buscar_tarefas(api, headers, data_ini, data_fim, log=print):
+def _preenchido(cf):
+    if not cf:
+        return False
+    if cf.get("type") == "drop_down":
+        return _id_dropdown(cf) is not None
+    v = cf.get("value")
+    return v not in (None, "", [], {})
+
+
+def buscar_tarefas(api, headers, data_ini, data_fim, log=print, view_id=VIEW_ID):
     """Tarefas da visualização com vencimento entre data_ini e data_fim (inclusive)."""
-    space_id, incluir, excluir, fechadas = _filtros_da_visao(api, headers)
+    space_id, incluir, excluir, preenchidos, fechadas = _filtros_da_visao(api, headers, view_id)
     team_id = _get(f"{api}/team", headers)["teams"][0]["id"]
     params = {
         "space_ids[]": space_id, "subtasks": "true", "include_closed": str(fechadas).lower(),
@@ -136,6 +147,9 @@ def buscar_tarefas(api, headers, data_ini, data_fim, log=print):
                 return False
         for cf_id, proibidos in excluir.items():
             if _id_dropdown(cfs.get(cf_id, {})) in proibidos:
+                return False
+        for cf_id in preenchidos:
+            if not _preenchido(cfs.get(cf_id)):
                 return False
         return True
 

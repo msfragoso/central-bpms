@@ -272,6 +272,28 @@ class RoteadorSaida:
         return False
 
 
+def instalar_log_de_erros():
+    """
+    No pythonw (sem janela) não existe console: erros e uma eventual parada do
+    serviço sumiam sem rastro (visto em 07/10/2026). Grava tudo em dados/servico.log.
+    """
+    import threading as _th
+    import traceback as _tb
+    arq = open(dados_arquivo("servico.log"), "a", encoding="utf-8", buffering=1)
+    arq.write(f"\n===== serviço iniciado em {datetime.now():%d/%m/%Y %H:%M:%S} =====\n")
+    if sys.stderr is None:
+        sys.stderr = arq
+
+    def _registrar(tipo, valor, tb, onde="principal"):
+        arq.write(f"[{datetime.now():%d/%m %H:%M:%S}] erro não tratado ({onde}):\n")
+        arq.write("".join(_tb.format_exception(tipo, valor, tb)))
+
+    sys.excepthook = _registrar
+    _th.excepthook = lambda a: _registrar(a.exc_type, a.exc_value, a.exc_traceback, f"thread {a.thread.name}")
+    import atexit
+    atexit.register(lambda: arq.write(f"[{datetime.now():%d/%m %H:%M:%S}] serviço encerrado\n"))
+
+
 def instalar_roteador():
     if not isinstance(sys.stdout, RoteadorSaida):
         sys.stdout = RoteadorSaida(sys.stdout)
