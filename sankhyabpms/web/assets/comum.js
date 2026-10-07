@@ -58,15 +58,17 @@ const BPMS = (() => {
     const topo = document.createElement("header");
     topo.className = "topo";
     topo.innerHTML = `<div class="topo-dentro">
-      <a class="marca" href="index.html"><span class="selo">BP</span>Central BP-MS</a>
-      <nav class="nav">${TELAS.map((t) => `<a href="${t.href}" class="${t.id === ativo ? "ativo" : ""}" data-texto="nav.${t.id}">${t.rotulo}</a>`).join("")}</nav>
+      <a class="marca" href="index.html"><span class="selo">BP</span><span class="marca-texto">Central BP-MS</span></a>
+      <button class="botao-menu" id="botao-menu" aria-expanded="false" aria-controls="nav-principal">☰ <span id="menu-atual"></span></button>
+      <nav class="nav" id="nav-principal">${TELAS.map((t) => `<a href="${t.href}" class="${t.id === ativo ? "ativo" : ""}" data-texto="nav.${t.id}">${t.rotulo}</a>`).join("")}</nav>
       <span class="pilula" id="pilula-servico">verificando…</span>
       <button class="botao-tema" id="botao-editar" title="Editar os textos desta tela">✎</button>
       <button class="botao-tema" id="botao-tema" title="Tema claro/escuro">◐</button>
     </div>`;
     document.body.prepend(topo);
     $("#botao-editar").onclick = () => (document.body.classList.contains("editando") ? null : editarTextos());
-    aplicarTextos();
+    aplicarTextos().then(ajustarMenu);
+    prepararMenu(topo);
     $("#botao-tema").onclick = () => {
       const escuro = document.documentElement.dataset.theme
         ? document.documentElement.dataset.theme === "dark"
@@ -82,6 +84,36 @@ const BPMS = (() => {
     setInterval(atualizarPilula, 5000);
   }
 
+  // ------------------------------------------------------------ menu responsivo
+  // O menu fica numa linha só; quando não cabe (tela estreita ou nomes
+  // longos), vira o botão "☰ <tela atual>" com a lista aberta embaixo.
+  function ajustarMenu() {
+    const topo = $(".topo"), nav = $("#nav-principal");
+    if (!topo || !nav) return;
+    const ativo = $("a.ativo", nav);
+    $("#menu-atual").textContent = ativo ? ativo.textContent : "Menu";
+    if (topo.classList.contains("menu-aberto")) return;
+    topo.classList.remove("menu-compacto");
+    if (nav.scrollWidth > nav.clientWidth + 1) topo.classList.add("menu-compacto");
+  }
+  function prepararMenu(topo) {
+    const botao = $("#botao-menu");
+    const fechar = () => { topo.classList.remove("menu-aberto"); botao.setAttribute("aria-expanded", "false"); ajustarMenu(); };
+    botao.onclick = (e) => {
+      e.stopPropagation();
+      const abrir = !topo.classList.contains("menu-aberto");
+      topo.classList.toggle("menu-aberto", abrir);
+      botao.setAttribute("aria-expanded", String(abrir));
+      if (!abrir) ajustarMenu();
+    };
+    document.addEventListener("click", (e) => { if (topo.classList.contains("menu-aberto") && !e.target.closest("#nav-principal")) fechar(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && topo.classList.contains("menu-aberto")) fechar(); });
+    if (window.ResizeObserver) new ResizeObserver(ajustarMenu).observe($(".topo-dentro", topo));
+    else addEventListener("resize", ajustarMenu);
+    document.fonts?.ready.then(ajustarMenu);
+    ajustarMenu();
+  }
+
   let ultimoStatus = null;
   async function atualizarPilula() {
     const p = $("#pilula-servico");
@@ -91,13 +123,14 @@ const BPMS = (() => {
       if (s.ativa) { p.className = "pilula rodando"; p.textContent = `rodando: ${s.ativa.titulo}`; }
       else if (!s.motores_encontrados) { p.className = "pilula erro"; p.textContent = "pasta dos motores não encontrada"; }
       else { p.className = "pilula ok"; p.textContent = "serviço local ok"; }
+      p.title = p.textContent;  // em tela estreita a pílula vira só um ponto colorido
       $$("[data-ultimo-uso]").forEach((el) => {
         const v = s.ultimo_uso[el.dataset.ultimoUso];
         el.textContent = v ? `último uso ${v}` : "";
       });
       return s;
     } catch (e) {
-      p.className = "pilula erro"; p.textContent = "serviço fora do ar";
+      p.className = "pilula erro"; p.textContent = "serviço fora do ar"; p.title = p.textContent;
       return null;
     }
   }
@@ -165,7 +198,7 @@ const BPMS = (() => {
         });
         try {
           if (Object.keys(textos).length) textosSalvos = (await post("/api/textos", { textos })).textos;
-          sair(); aplicarTextos();
+          sair(); aplicarTextos().then(ajustarMenu);
           toast("Textos salvos.", "ok");
         } catch (err) { toast(err.message, "erro"); }
       }

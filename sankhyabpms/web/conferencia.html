@@ -26,12 +26,22 @@
         <div class="campo c6"><label for="ate">Data final</label><input id="ate"></div>
         <div class="campo"><span class="ajuda">O período também é usado pela Borracha Mágica.</span></div>
         <div class="campo">
-          <label for="clickup">CSV do ClickUp <span class="ajuda">(obrigatório)</span></label>
-          <input type="file" id="clickup" accept=".csv">
+          <span class="rotulo">Tarefas do ClickUp</span>
+          <label class="checar"><input type="radio" name="origem-cu" value="api" checked> Buscar direto do ClickUp <span class="ajuda">(visualização "Visão para IA", no período acima)</span></label>
+          <label class="checar"><input type="radio" name="origem-cu" value="csv"> Enviar o CSV exportado</label>
+          <input type="file" id="clickup" accept=".csv" class="oculto" aria-label="CSV do ClickUp">
         </div>
         <div class="campo">
-          <label for="sankhya">Excel do Sankhya <span class="ajuda">(opcional — em branco, lê direto do Experience)</span></label>
-          <input type="file" id="sankhya" accept=".xlsx,.xls">
+          <span class="rotulo">Apontamentos das OS</span>
+          <label class="checar"><input type="radio" name="origem-sk" value="om" checked> Sankhya-OM <span class="ajuda">(todas as FAPs, inclusive horas cruzadas)</span></label>
+          <div class="linha-campo" id="om-linha" style="margin:2px 0 4px 26px">
+            <button class="btn secundario pequeno" id="btn-om" type="button">Conectar ao Sankhya-OM</button>
+            <span class="ajuda" id="om-status">verificando…</span>
+          </div>
+          <label class="checar" id="tag-linha" style="margin:0 0 4px 26px;font-weight:500"><input type="checkbox" id="usar-tag" checked> Usar a TAG ID do Experience para vincular <span class="ajuda">(recomendado; deixa a conferência alguns minutos mais demorada)</span></label>
+          <label class="checar"><input type="radio" name="origem-sk" value="experience"> Experience <span class="ajuda">(só as FAPs que vocês acessam)</span></label>
+          <label class="checar"><input type="radio" name="origem-sk" value="excel"> Enviar o Excel exportado do Sankhya</label>
+          <input type="file" id="sankhya" accept=".xlsx,.xls" class="oculto" aria-label="Excel do Sankhya">
         </div>
         <div class="campo">
           <label for="destino">Pasta destino do relatório</label>
@@ -57,6 +67,10 @@
       <pre class="log alto" id="log"></pre>
       <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
       <div class="arquivos" id="arquivos"></div>
+      <div class="acoes oculto" id="pdf-linha" style="margin-top:8px">
+        <button class="btn" id="btn-pdf" type="button">📄 Gerar PDF do relatório</button>
+        <span id="pdf-link"></span>
+      </div>
     </section>
   </div>
 </main>
@@ -69,7 +83,58 @@
   [$("#de"), $("#ate")].forEach(mascaraData);
 
   function travar(sim) { $("#btn-conferir").disabled = sim; $("#btn-borracha").disabled = sim; }
-  const aoTerminar = () => travar(false);
+  // ---------------- PDF do relatório (depois que a conferência termina)
+  let ultimaConferencia = null;
+  const aoTerminar = (t) => {
+    travar(false);
+    const temHtml = t && t.tipo === "conferencia" && (t.arquivos || []).some((a) => /\.html?$/i.test(a.nome));
+    ultimaConferencia = temHtml ? t.id : null;
+    $("#pdf-linha").classList.toggle("oculto", !temHtml);
+    $("#pdf-link").innerHTML = "";
+  };
+  $("#btn-pdf").onclick = async () => {
+    if (!ultimaConferencia) return;
+    const b = $("#btn-pdf"); b.disabled = true; b.textContent = "Gerando PDF…";
+    try {
+      const r = await post("/api/conferencia/pdf", { tarefa: ultimaConferencia });
+      const base = ["127.0.0.1", "localhost"].includes(location.hostname) ? "" : "http://127.0.0.1:8766";  // site do GitHub
+      const url = `${base}/api/tarefas/${r.tarefa}/arquivo/${r.indice}`;
+      $("#pdf-link").innerHTML = `<a class="btn secundario pequeno" href="${url}">⬇ ${esc(r.nome)}</a>`;
+      toast("PDF gerado.", "ok");
+      window.location.href = url;   // já baixa
+    } catch (e) { toast(e.message, "erro"); }
+    finally { b.disabled = false; b.textContent = "📄 Gerar PDF do relatório"; }
+  };
+
+  const pelaApi = () => document.querySelector('input[name="origem-cu"]:checked')?.value === "api";
+  document.querySelectorAll('input[name="origem-cu"]').forEach((r) => r.addEventListener("change", () => $("#clickup").classList.toggle("oculto", pelaApi())));
+
+  // ---------------- origem das OS (Sankhya-OM / Experience / Excel)
+  const origemSk = () => document.querySelector('input[name="origem-sk"]:checked')?.value || "om";
+  let omEstado = "desconectado";
+  function mostrarOrigemSk() {
+    $("#sankhya").classList.toggle("oculto", origemSk() !== "excel");
+    $("#om-linha").classList.toggle("oculto", origemSk() !== "om");
+    $("#tag-linha").classList.toggle("oculto", origemSk() !== "om");
+  }
+  document.querySelectorAll('input[name="origem-sk"]').forEach((r) => r.addEventListener("change", mostrarOrigemSk));
+  async function statusOm() {
+    try {
+      const s = await get("/api/om/status");
+      omEstado = s.estado === "conectado" && !s.consulta_pronta ? "sem_tela" : s.estado;
+      const txt = { sem_tela: "logado — abrindo a tela Consulta de OS no OM…", conectado: `conectado${s.desde ? " desde " + s.desde : ""} · Consulta de OS aberta`, aguardando_login: "aguardando seu login na janela do Sankhya-OM…", desconectado: s.mensagem || "não conectado" }[omEstado] || s.mensagem;
+      $("#om-status").textContent = txt;
+      $("#om-status").className = "ajuda " + (omEstado === "conectado" ? "ok" : omEstado === "erro" || omEstado === "desconectado" ? "erro" : "aviso");
+      $("#btn-om").textContent = s.estado === "conectado" ? "Abrir janela do Sankhya-OM" : "Conectar ao Sankhya-OM";
+    } catch (e) { /* serviço fora do ar: a pílula do topo já avisa */ }
+  }
+  $("#btn-om").onclick = async () => {
+    $("#btn-om").disabled = true;
+    try { await post("/api/om/conectar"); toast("Faça o login na janela do Sankhya-OM que abriu (se ainda não estiver logado)."); }
+    catch (e) { toast(e.message, "erro"); }
+    finally { $("#btn-om").disabled = false; statusOm(); }
+  };
+  mostrarOrigemSk(); statusOm(); setInterval(statusOm, 4000);
 
   async function enviarArquivo(input) {
     const f = input.files[0];
@@ -86,7 +151,11 @@
 
   $("#btn-conferir").onclick = async () => {
     if (!periodoOk()) return;
-    if (!$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
+    if (!pelaApi() && !$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
+    if (origemSk() === "om" && omEstado === "sem_tela") return toast("No Sankhya-OM, abra a tela 'Consulta de OS' pelo menu (na janela da Central) e tente de novo.", "erro");
+    if (origemSk() === "om" && omEstado !== "conectado") return toast("Conecte ao Sankhya-OM primeiro: clique em 'Conectar ao Sankhya-OM' e faça o login na janela que abrir.", "erro");
+    if (origemSk() === "excel" && !$("#sankhya").files[0]) return toast("Selecione o Excel do Sankhya.", "erro");
+    $("#pdf-linha").classList.add("oculto");
     const atualizar = $("#atualizar").checked;
     if (atualizar && !await confirmar("Atualizar o ClickUp?",
       "Depois de gerar o relatório, a conferência vai <b>gravar status, OS Sankhya, observações e tempo rastreado</b> nas tarefas do ClickUp que bateram.",
@@ -95,7 +164,7 @@
     try {
       const corpo = {
         de: $("#de").value, ate: $("#ate").value, destino: $("#destino").value, consultor: $("#consultor").value,
-        atualizar_clickup: atualizar, clickup_id: await enviarArquivo($("#clickup")), sankhya_id: await enviarArquivo($("#sankhya")),
+        atualizar_clickup: atualizar, origem_clickup: pelaApi() ? "api" : "csv", clickup_id: pelaApi() ? null : await enviarArquivo($("#clickup")), origem_sankhya: origemSk(), usar_tag_id: $("#usar-tag").checked, sankhya_id: origemSk() === "excel" ? await enviarArquivo($("#sankhya")) : null,
       };
       if (atualizar) corpo.confirmar = true;
       BPMS.iniciar("/api/conferencia/executar", corpo, el, aoTerminar);
@@ -104,14 +173,14 @@
 
   $("#btn-borracha").onclick = async () => {
     if (!periodoOk()) return;
-    if (!$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
+    if (!pelaApi() && !$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
     const ok = await confirmar("Confirmar Borracha Mágica",
-      `⚠ <b>ATENÇÃO!</b><br><br>Você está prestes a limpar <b>TODO o tempo rastreado</b>, apagar a <b>OS Sankhya</b> e resetar o <b>Status</b> de todas as tarefas do CSV entre <b>${esc($("#de").value)}</b> e <b>${esc($("#ate").value)}</b>.<br><br>Não tem como desfazer. Tem certeza?`,
+      `⚠ <b>ATENÇÃO!</b><br><br>Você está prestes a limpar <b>TODO o tempo rastreado</b>, apagar a <b>OS Sankhya</b> e resetar o <b>Status</b> de todas as tarefas do ClickUp (visualização ou CSV) entre <b>${esc($("#de").value)}</b> e <b>${esc($("#ate").value)}</b>.<br><br>Não tem como desfazer. Tem certeza?`,
       { botao: "Passar a borracha", perigo: true });
     if (!ok) return;
     travar(true);
     try {
-      const corpo = { de: $("#de").value, ate: $("#ate").value, clickup_id: await enviarArquivo($("#clickup")), confirmar: true };
+      const corpo = { de: $("#de").value, ate: $("#ate").value, origem_clickup: pelaApi() ? "api" : "csv", clickup_id: pelaApi() ? null : await enviarArquivo($("#clickup")), confirmar: true };
       BPMS.iniciar("/api/conferencia/borracha", corpo, el, aoTerminar);
     } catch (e) { toast(e.message, "erro"); travar(false); }
   };

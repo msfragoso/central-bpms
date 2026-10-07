@@ -39,7 +39,8 @@ def _linha(r):
         situacao = "VAZIA"
     def os_(o):
         return {"num": o.get("numos_sankhya"), "data": o.get("date_done"), "realizado": o.get("diff_time"),
-                "processo": o.get("process_names"), "ok": o.get("_realizado_ok", True)}
+                "processo": o.get("process_names"), "ok": o.get("_realizado_ok", True),
+                "executante": o.get("_executante") or ""}
     return {
         "fap": r["fap"], "parceiro": r["parceiro"], "situacao": situacao,
         "num_os": [o.get("numos_sankhya") for o in r["os"]], "horas": r["total_horas"] if r["os"] else "",
@@ -47,6 +48,34 @@ def _linha(r):
         "bloqueios": r["bloqueios"], "os": [os_(o) for o in r["os"]],
         "fora_periodo": [os_(o) for o in r["fora_periodo"]],
     }
+
+
+def _preencher_executantes(token, resultados, periodo, log):
+    """
+    A lista de OS do aceite (available-accepted-os) não traz quem executou.
+    Busca numa única consulta só de leitura (search_orders, a mesma da
+    conferência) o person_name de cada OS, pelo número Sankhya.
+    """
+    from experience_api.orders import search_orders
+    com_os = [r for r in resultados if r["impl_id"] and (r["os"] or r["fora_periodo"])]
+    if not com_os:
+        return
+    impl_ids = sorted({r["impl_id"] for r in com_os})
+    de = periodo[0].isoformat()
+    ate = (periodo[1] + timedelta(days=1)).isoformat()
+    nomes = {}
+    try:
+        for integrada in ("S", ""):
+            for o in search_orders(token, impl_ids, de, ate, integrated=integrada) or []:
+                num = str(o.get("numos_sankhya") or "")
+                if num and o.get("person_name") and num not in nomes:
+                    nomes[num] = o["person_name"]
+    except Exception as e:  # executante é só informativo: nunca derruba a conferência
+        log(f"Aviso: não consegui buscar os executantes ({e}).")
+        return
+    for r in com_os:
+        for o in r["os"] + r["fora_periodo"]:
+            o["_executante"] = nomes.get(str(o.get("numos_sankhya") or ""), "")
 
 
 @rota("GET", "/api/aceite/opcoes")
@@ -67,6 +96,8 @@ def conferir(req):
         token = _login(core, t, novo=True)
         t.log(f"Período: {periodo[0]:%d/%m/%Y} a {periodo[1]:%d/%m/%Y}")
         res = core.conferir_todas(token, faps, periodo, t.log)
+        t.log("Buscando os executantes das OS (só leitura)...")
+        _preencher_executantes(token, res, periodo, t.log)
         ESTADO["resultados"] = {r["fap"]: r for r in res}
         t.adicionar_arquivo("Prévia (.csv)", core.salvar_csv(res))
         prontas = sum(1 for r in res if r["os"] and not r["bloqueios"])

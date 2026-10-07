@@ -19,6 +19,39 @@ rodando, só abre a página.
 | Apontamentos travados (Fase 3) | `fase3.html` | `conferencia_os/fase3_prazo_retroativo.py` |
 | Aceite de OS | `aceite.html` | `aceite_os/enviar_aceite_os.py` |
 
+## Conferência sem exportar CSV
+
+Na Conferência de OS (e na Borracha), a opção **Buscar direto do ClickUp** lê a
+visualização "Visão para IA" pela API (`servico/clickup_visao.py`) e gera o
+mesmo CSV da exportação manual, no período da tela. Os filtros (Apontamento,
+Agenda, responsável) são lidos da própria visualização; só o período da
+visualização é trocado pelo da conferência. O CSV gerado fica em
+`dados/clickup/` e aparece para baixar no fim. A opção de enviar o CSV continua.
+
+## Conferência pelo Sankhya-OM (todas as FAPs)
+
+Em "Apontamentos das OS", a opção **Sankhya-OM** lê as OS da tela "Consulta de OS"
+do OM (período + executantes + tempo gasto > 0), inclusive de FAPs de outras BPs
+(horas cruzadas). O login é **assistido**: "Conectar ao Sankhya-OM" abre uma janela
+do Chrome só da Central (perfil em `dados/om_perfil`) na página oficial do OM, e o
+usuário faz o login; a Central não imita o login do OM. Depois do login a Central
+abre a Consulta de OS (`system.jsp#app/<ID da tela em base64>`) e usa a sessão dela
+só para leitura (`servico/om_sessao.py`, `servico/app_om.py`).
+
+- **TAG ID:** com a caixa marcada, cada OS do OM recebe a TAG ID ([ClickUp:id]) do
+  lançamento do Experience (OS -> sub-tarefa da OS -> lançamento), e a Fase 1 casa
+  pela TAG ID. O que ficar sem TAG ID segue a comparação por data/parceiro/consultor/horário.
+- **Horas cruzadas:** o parceiro sai da subtarefa pai "Nome (código do parceiro)",
+  ligado ao CODPARC das OS do OM (regra no motor, `conferencia_os/motor_conferencia.py`).
+- **PDF:** depois da conferência, "Gerar PDF do relatório" converte o HTML em PDF
+  (A4 paisagem) com o Chrome do PC (`servico/pdf_relatorio.py`).
+
+## Lançamentos sem apontamento de OS
+
+Na tela do Sync: lista os lançamentos PENDING (sem OS) do Experience no período,
+só de projetos Em Andamento, com opção de excluir os marcados (só no Experience;
+o ClickUp não é alterado). Cada exclusão fica em `log_exclusoes_orfaos.jsonl`.
+
 ## Editar os textos das telas
 
 Botão **✎** no topo de qualquer tela: os títulos, descrições e itens do menu

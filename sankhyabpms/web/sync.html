@@ -46,6 +46,46 @@
       <div class="arquivos" id="arquivos"></div>
     </section>
   </div>
+
+  <section class="card faixa" style="margin-top:14px">
+    <h2 data-texto="sync.semos.titulo">Lançamentos sem apontamento de OS</h2>
+    <p style="color:var(--suave);margin:-4px 0 12px" data-texto="sync.semos.descricao">Depois do fechamento das OS, lista no Experience os lançamentos que ficaram pendentes (sem OS), só de projetos Em Andamento. A consulta não altera nada; para limpar, marque os lançamentos e use "Excluir marcados do Experience" (o ClickUp não é alterado).</p>
+    <div class="campos">
+      <div class="campo c3"><label for="so-de" data-texto="sync.semos.de">De</label><input id="so-de"></div>
+      <div class="campo c3"><label for="so-ate" data-texto="sync.semos.ate">Até</label><input id="so-ate"></div>
+      <div class="campo c6"><label for="so-parceiro"><span data-texto="sync.semos.parceiro">Parceiro ou FAP</span> <span class="ajuda" data-texto="sync.semos.parceiro-ajuda">(opcional — em branco, todos)</span></label><input id="so-parceiro"></div>
+      <div class="campo">
+        <div class="atalhos-periodo" style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn secundario pequeno" data-periodo="mes-passado">Mês passado</button>
+          <button class="btn secundario pequeno" data-periodo="ciclo-anterior">Ciclo anterior (21 a 20)</button>
+          <button class="btn secundario pequeno" data-periodo="este-mes">Este mês até hoje</button>
+        </div>
+      </div>
+      <div class="campo"><label class="checar"><input type="checkbox" id="futuras"> <span data-texto="sync.semos.futuras">Incluir datas futuras</span></label></div>
+    </div>
+    <div class="acoes"><button class="btn" id="btn-sem-os">Consultar lançamentos sem OS</button></div>
+  </section>
+
+  <section class="card oculto" id="card-sem-os" style="margin-top:14px">
+    <h2>Resultado <span class="ajuda" id="sem-os-contagem"></span></h2>
+    <div class="campos" style="margin-bottom:10px">
+      <div class="campo c4"><label for="filtro-sem-os">Filtrar na tabela</label><input id="filtro-sem-os" placeholder="executante, parceiro, FAP…"></div>
+    </div>
+    <div class="tabela-caixa">
+      <table id="tabela-sem-os">
+        <thead><tr>
+          <th class="centro"><input type="checkbox" id="so-todos" aria-label="Marcar todos os visíveis"></th><th data-ordem="executante">Executante</th><th data-ordem="parceiro">Parceiro</th><th data-ordem="fap">FAP</th>
+          <th data-ordem="data">Data</th><th data-ordem="dias">Dias</th><th>Horário</th><th data-ordem="etapa">Etapa / atividade</th><th>ClickUp</th>
+        </tr></thead>
+        <tbody id="corpo-sem-os"></tbody>
+      </table>
+    </div>
+    <div class="acoes">
+      <span class="ajuda" id="so-marcados" style="color:var(--suave);font-size:13px"></span>
+      <span class="espaco"></span>
+      <button class="btn perigo" id="btn-so-excluir" disabled>Excluir marcados do Experience</button>
+    </div>
+  </section>
 </main>
 <script src="assets/comum.js"></script>
 <script>
@@ -75,7 +115,88 @@
   }
   $("#parceiro").addEventListener("input", contar);
 
-  const travar = (sim) => { $("#btn-executar").disabled = sim; };
+  const travar = (sim) => { $("#btn-executar").disabled = sim; $("#btn-sem-os").disabled = sim; };
+
+  // ---------------- lançamentos sem OS
+  let semOs = [], soMarcados = new Set(), soSituacao = {};
+  const ordemSemOs = BPMS.ordenavel($("#tabela-sem-os"), desenharSemOs);
+  const dataNum = (s) => { const d = dataValida(s); return d ? d.getTime() : 0; };
+  function desenharSemOs() {
+    const { chave, desc } = ordemSemOs();
+    const q = BPMS.normalizar($("#filtro-sem-os").value);
+    let lista = semOs.filter((r) => !q || BPMS.normalizar([r.executante, r.parceiro, r.lista, r.fap, r.etapa, r.atividade].join(" ")).includes(q));
+    if (chave) lista = lista.slice().sort((a, b) => {
+      const c = chave === "data" ? BPMS.comparar(dataNum(a.data), dataNum(b.data))
+        : chave === "dias" ? BPMS.comparar(a.dias ?? -1, b.dias ?? -1)
+        : chave === "fap" ? BPMS.comparar(+a.fap || 0, +b.fap || 0) : BPMS.comparar(a[chave], b[chave]);
+      return desc ? -c : c;
+    });
+    soVisiveis = lista.filter((r) => !soSituacao[r.id_experience]).map((r) => String(r.id_experience));
+    $("#corpo-sem-os").innerHTML = lista.length ? lista.map((r) => { const id = String(r.id_experience), sit = soSituacao[id]; return `<tr class="${sit === "EXCLUÍDO" ? "vazia" : (r.dias ?? 0) > 3 ? "bloqueada" : ""}">
+        <td class="centro">${sit ? `<span class="etiqueta ${sit === "EXCLUÍDO" ? "enviada" : "falhou"}">${esc(sit)}</span>` : `<input type="checkbox" data-so="${esc(id)}" ${soMarcados.has(id) ? "checked" : ""} aria-label="Marcar lançamento ${esc(id)}">`}</td>
+        <td>${esc(r.executante)}</td><td>${esc(r.parceiro || r.lista)}</td><td>${esc(r.fap)}</td><td>${esc(r.data)}</td>
+        <td>${r.dias == null ? "" : r.dias}</td><td>${esc([r.inicio, r.fim].filter(Boolean).join(" - "))}</td>
+        <td>${esc(r.etapa)}${r.atividade ? `<br><span style="color:var(--suave)">${esc(r.atividade)}</span>` : ""}</td>
+        <td>${r.tag_clickup ? `<a href="https://app.clickup.com/t/${encodeURIComponent(r.tag_clickup)}" target="_blank" rel="noopener">#${esc(r.tag_clickup)}</a>` : ""}</td></tr>`; }).join("")
+      : `<tr><td colspan="9" class="vazio-tabela">${semOs.length ? "Nada bate com o filtro." : "Nenhum lançamento sem OS no período."}</td></tr>`;
+    const pessoas = new Set(lista.map((r) => r.executante)).size;
+    $("#sem-os-contagem").textContent = semOs.length ? `${lista.length} lançamento(s) · ${pessoas} executante(s) · vermelho = mais de 3 dias` : "";
+    $("#so-marcados").textContent = soMarcados.size ? `${soMarcados.size} marcado(s)` : "";
+    $("#btn-so-excluir").disabled = !soMarcados.size || $("#btn-sem-os").disabled;
+    $("#so-todos").checked = soVisiveis.length > 0 && soVisiveis.every((id) => soMarcados.has(id));
+  }
+  let soVisiveis = [];
+  $("#corpo-sem-os").addEventListener("change", (e) => {
+    const cb = e.target.closest("[data-so]"); if (!cb) return;
+    cb.checked ? soMarcados.add(cb.dataset.so) : soMarcados.delete(cb.dataset.so);
+    desenharSemOs();
+  });
+  $("#so-todos").addEventListener("change", (e) => {
+    soVisiveis.forEach((id) => (e.target.checked ? soMarcados.add(id) : soMarcados.delete(id)));
+    desenharSemOs();
+  });
+  $("#btn-so-excluir").onclick = async () => {
+    const sel = semOs.filter((r) => soMarcados.has(String(r.id_experience)));
+    if (!sel.length) return;
+    const lista = sel.slice(0, 25).map((r) => `<li>${esc(r.executante)} · ${esc(r.parceiro || r.lista)} (FAP ${esc(r.fap)}) · ${esc(r.data)} ${esc([r.inicio, r.fim].filter(Boolean).join("-"))} · ${esc(r.atividade || r.etapa)}</li>`).join("")
+      + (sel.length > 25 ? `<li>… e mais ${sel.length - 25}</li>` : "");
+    const ok = await confirmar(`Excluir ${sel.length} lançamento(s) do Experience?`,
+      `<ul>${lista}</ul><div class="aviso erro">Exclui os lançamentos <b>sem OS</b> do Experience. Antes de cada exclusão o serviço confere de novo: se o lançamento já tiver OS ou não existir mais, ele é pulado. Não tem como desfazer pela Central.</div>`
+      + `<div class="aviso">A tarefa no ClickUp não é alterada. Se ela continuar com Experience "Lançado" e vencimento num período que o sync rodar de novo, o sync pode recriar o lançamento.</div>`,
+      { botao: "Excluir", perigo: true });
+    if (!ok) return;
+    travar(true); desenharSemOs();
+    BPMS.iniciar("/api/sync/sem-os/excluir", { ids: sel.map((r) => r.id_experience), confirmar: true }, el, aoTerminarExcluir);
+  };
+  const aoTerminarExcluir = (t) => {
+    travar(false);
+    if (t && t.resultado) { Object.assign(soSituacao, t.resultado.situacao); Object.keys(t.resultado.situacao).forEach((id) => soMarcados.delete(id)); }
+    desenharSemOs();
+  };
+  $("#filtro-sem-os").addEventListener("input", desenharSemOs);
+  [$("#so-de"), $("#so-ate")].forEach(mascaraData);
+  const br = (d) => d.toLocaleDateString("pt-BR");
+  function definirPeriodo(tipo) {
+    const h = new Date(); let a, b;
+    if (tipo === "mes-passado") { a = new Date(h.getFullYear(), h.getMonth() - 1, 1); b = new Date(h.getFullYear(), h.getMonth(), 0); }
+    else if (tipo === "ciclo-anterior") {  // ciclo de fechamento 21→20 (o mesmo da Fase 3), o último já encerrado
+      const fimCiclo = h.getDate() >= 21 ? new Date(h.getFullYear(), h.getMonth(), 20) : new Date(h.getFullYear(), h.getMonth() - 1, 20);
+      a = new Date(fimCiclo.getFullYear(), fimCiclo.getMonth() - 1, 21); b = fimCiclo;
+    } else { a = new Date(h.getFullYear(), h.getMonth(), 1); b = h; }
+    $("#so-de").value = br(a); $("#so-ate").value = br(b);
+  }
+  document.querySelectorAll("[data-periodo]").forEach((btn) => btn.onclick = () => definirPeriodo(btn.dataset.periodo));
+  definirPeriodo("mes-passado");
+  const aoTerminarSemOs = (t) => {
+    travar(false);
+    if (t && t.resultado) { semOs = t.resultado.linhas; soMarcados.clear(); soSituacao = {}; $("#card-sem-os").classList.remove("oculto"); desenharSemOs(); $("#card-sem-os").scrollIntoView({ behavior: "smooth" }); }
+  };
+  $("#btn-sem-os").onclick = () => {
+    const corpo = { parceiro: $("#so-parceiro").value.trim(), de: $("#so-de").value, ate: $("#so-ate").value, incluir_futuras: $("#futuras").checked };
+    if (!dataValida(corpo.de) || !dataValida(corpo.ate)) return toast("Use datas no formato DD/MM/AAAA.", "erro");
+    travar(true);
+    BPMS.iniciar("/api/sync/sem-os", corpo, el, aoTerminarSemOs);
+  };
 
   $("#btn-executar").onclick = async () => {
     const corpo = { parceiro: $("#parceiro").value.trim(), de: $("#de").value, ate: $("#ate").value, modelo: $("#modelo").value };
@@ -101,7 +222,7 @@
       $("#modelo").value = o.modelo; $("#parceiro").value = o.parceiro; $("#de").value = o.de; $("#ate").value = o.ate;
       contar();
     } catch (e) { toast(e.message, "erro"); }
-    BPMS.retomar(["sync"], el, () => travar(false), () => travar(true));
+    BPMS.retomar(["sync", "sync_sem_os", "sync_sem_os_excluir"], el, (t) => (t && t.tipo === "sync_sem_os" ? aoTerminarSemOs(t) : t && t.tipo === "sync_sem_os_excluir" ? aoTerminarExcluir(t) : travar(false)), () => travar(true));
   })();
 })();
 </script>

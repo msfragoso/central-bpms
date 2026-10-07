@@ -9,11 +9,27 @@ import base64
 import os
 import re
 import uuid
+from datetime import datetime
 
 from nucleo import (GERENTE, PASTAS, Cancelada, ErroUsuario, dados_arquivo, exigir_confirmacao,
                     marcar_uso, periodo_br, rota)
 
 PASTA_UPLOADS = dados_arquivo("uploads")
+PASTA_CLICKUP = dados_arquivo("clickup")
+
+
+def _origem_api(corpo):
+    """origem_clickup = "api" (buscar da visualização pela API) ou "csv" (arquivo enviado)."""
+    return (corpo.get("origem_clickup") or "csv") == "api"
+
+
+def _csv_da_api(t, ini, fim):
+    """Gera dentro da tarefa o CSV da visualização 'Visão para IA' (ver clickup_visao.py)."""
+    import clickup_visao
+    nome = f"ClickUp_{ini:%Y%m%d}_a_{fim:%Y%m%d}_{datetime.now():%H%M%S}.csv"
+    caminho, _ = clickup_visao.gerar_csv(os.path.join(PASTA_CLICKUP, nome), ini, fim, t.log)
+    t.adicionar_arquivo("CSV do ClickUp (gerado pela API)", caminho)
+    return caminho
 
 
 @rota("POST", "/api/upload")
@@ -57,18 +73,83 @@ def opcoes(req):
                  "sankhya_api": bool(SANKHYA_API_DISPONIVEL)}
 
 
+def _tag_id_do_experience(t, om_df, ini, fim, caminho_cu=None):
+    """
+    As OS do OM não trazem a TAG ID ([ClickUp:id]) que o sync grava no lançamento
+    do Experience. O vínculo (descoberto em 07/10/2026) é:
+        Núm. OS -> OS no Experience (search_orders) -> sub-tarefa da OS
+        (get_order_tasks; o "id" dela é o id do lançamento) -> lançamento
+        (additional_information com [ClickUp:id]) -> TAG ID.
+    Só leitura, e só nas FAPs que temos no Experience; o que ficar sem TAG ID
+    (ex.: horas cruzadas de outras BPs) segue a Fase 2 (data, parceiro,
+    consultor e horário).
+    """
+    import time
+    import experience_api as exp
+    from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
+    from experience_api.orders import search_orders, get_order_tasks
+    from experience_api.clickup_tags import extrair_tag_clickup
+    from app_sync import _lancamentos_do_periodo
+
+    t.log("TAG ID: buscando no Experience a TAG ID de cada OS (só leitura)...")
+    token = exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
+    if not token:
+        t.log("⚠ TAG ID: falha no login do Experience. Seguindo sem TAG ID.")
+        return om_df
+    om_df = om_df.copy()
+    nums_om = om_df["Núm. OS"].astype(str).str.strip().str.replace(".0", "", regex=False)
+    de, ate = ini.isoformat(), fim.isoformat()
+    tags, sem_acesso = {}, []
+    for fap in sorted({str(f).replace(".0", "") for f in om_df["Número Unico FAP"].dropna()}):
+        try:
+            impl = exp.find_implantation_by_fap(token, fap)
+            if not impl:
+                sem_acesso.append(fap)
+                continue
+            lanc_tag = {str(l.get("id")): extrair_tag_clickup(l.get("additional_information"))
+                        for l in _lancamentos_do_periodo(token, impl["id"], de, ate)}
+            for o in search_orders(token, [impl["id"]], de, ate, integrated="S") or []:
+                num = str(o.get("numos_sankhya") or "")
+                if not num or num not in set(nums_om):
+                    continue
+                for st in get_order_tasks(token, o.get("id") or o.get("order_id")) or []:
+                    tag = lanc_tag.get(str(st.get("id")))
+                    if tag:
+                        tags.setdefault(num, tag)
+                        break
+                time.sleep(0.1)
+        except Exception as e:  # uma FAP com problema não derruba a conferência
+            t.log(f"  ⚠ TAG ID: FAP {fap}: {e}")
+    vazia = om_df["Tag ClickUp"].isna() | om_df["Tag ClickUp"].astype(str).str.strip().isin(["", "None", "nan"])
+    novas = nums_om.map(tags)
+    om_df.loc[vazia & novas.notna(), "Tag ClickUp"] = novas[vazia & novas.notna()]
+    t.log(f"TAG ID: {int(novas.notna().sum())} de {len(om_df)} OS do OM vinculadas pela TAG ID do Experience"
+          + (f"; FAP(s) fora do Experience (horas cruzadas): {', '.join(sem_acesso)}" if sem_acesso else "")
+          + ". As demais seguem pela comparação de data, parceiro, consultor e horário.")
+    return om_df
+
+
 @rota("POST", "/api/conferencia/executar")
 def executar(req):
     from config_conferencia import CAMINHO_DESTINO_PADRAO
     c = req.corpo
     ini, fim = periodo_br(c.get("de"), c.get("ate"))
-    sankhya_path = _caminho_upload(c.get("sankhya_id"), False, "Excel do Sankhya")
-    clickup_path = _caminho_upload(c.get("clickup_id"), True, "CSV do ClickUp")
+    origem_sankhya = c.get("origem_sankhya") or ("excel" if c.get("sankhya_id") else "experience")
+    if origem_sankhya not in ("om", "experience", "excel"):
+        raise ErroUsuario("Origem das OS inválida.")
+    sankhya_path = _caminho_upload(c.get("sankhya_id"), True, "Excel do Sankhya") if origem_sankhya == "excel" else ""
+    if origem_sankhya == "om":
+        from om_sessao import OM
+        if OM.estado != "conectado":
+            raise ErroUsuario("Conecte ao Sankhya-OM antes (botão 'Conectar ao Sankhya-OM') e faça o login na janela que abrir.")
+    pela_api = _origem_api(c)
+    clickup_path = None if pela_api else _caminho_upload(c.get("clickup_id"), True, "CSV do ClickUp")
     destino = (c.get("destino") or "").strip() or CAMINHO_DESTINO_PADRAO
     atualizar = bool(c.get("atualizar_clickup"))
     if atualizar:
         exigir_confirmacao(req)
     consultor = c.get("consultor") or "Todos"
+    usar_tag_id = origem_sankhya == "om" and c.get("usar_tag_id", True) is not False
 
     def trabalho(t):
         from dados_conferencia import exportar_dados, carregar_sankhya_de_arquivo, carregar_clickup_de_arquivo
@@ -86,16 +167,25 @@ def executar(req):
                  {"valor": None, "rotulo": "Interromper", "estilo": "perigo"}])
 
         try:
+            caminho_cu = _csv_da_api(t, ini, fim) if pela_api else clickup_path
             print("=== ETAPA 1: dados do Sankhya ===")
-            if sankhya_path:
+            if origem_sankhya == "om":
+                import app_om
+                sankhya_df, _ = app_om.buscar_os(ini, fim, t.log)
+                if usar_tag_id:
+                    sankhya_df = _tag_id_do_experience(t, sankhya_df, ini, fim, caminho_cu)
+                copia = os.path.join(PASTA_CLICKUP, f"OS_SankhyaOM_{ini:%Y%m%d}_a_{fim:%Y%m%d}_{datetime.now():%H%M%S}.xlsx")
+                sankhya_df.to_excel(copia, index=False)
+                t.adicionar_arquivo("OS do Sankhya-OM (.xlsx)", copia)
+            elif sankhya_path:
                 sankhya_df = carregar_sankhya_de_arquivo(sankhya_path)
             else:
-                sankhya_df, xlsx = exportar_dados(ini.isoformat(), fim.isoformat(), clickup_path)
+                sankhya_df, xlsx = exportar_dados(ini.isoformat(), fim.isoformat(), caminho_cu)
                 t.adicionar_arquivo("Planilha Sankhya (.xlsx)", xlsx)
             periodo_texto = f"{ini:%d/%m/%Y} a {fim:%d/%m/%Y}"
 
             print("\n=== ETAPA 2: dados do ClickUp ===")
-            cu_df = carregar_clickup_de_arquivo(clickup_path)
+            cu_df = carregar_clickup_de_arquivo(caminho_cu)
 
             print("\n=== ETAPA 3: cruzamento ===")
             resultado = cruzar_bases(sankhya_df, cu_df, callback_divergencia=perguntar_divergencia,
@@ -129,14 +219,37 @@ def executar(req):
 def borracha(req):
     exigir_confirmacao(req)
     ini, fim = periodo_br(req.corpo.get("de"), req.corpo.get("ate"))
-    clickup_path = _caminho_upload(req.corpo.get("clickup_id"), True, "CSV do ClickUp")
+    pela_api = _origem_api(req.corpo)
+    clickup_path = None if pela_api else _caminho_upload(req.corpo.get("clickup_id"), True, "CSV do ClickUp")
 
     def trabalho(t):
         from clickup_conferencia import get_clickup_token, executar_borracha_magica
         get_clickup_token()
-        qtd = executar_borracha_magica(clickup_path, ini.isoformat(), fim.isoformat())
+        caminho_cu = _csv_da_api(t, ini, fim) if pela_api else clickup_path
+        qtd = executar_borracha_magica(caminho_cu, ini.isoformat(), fim.isoformat())
         marcar_uso("conferencia")
         return {"mensagem": f"Borracha concluída! {qtd} tarefa(s) foram limpas."}
 
     t = GERENTE.iniciar("borracha", "Borracha Mágica (ClickUp)", trabalho, pasta=PASTAS["conferencia"])
     return 200, {"tarefa": t.id}
+
+
+@rota("POST", "/api/conferencia/pdf")
+def gerar_pdf(req):
+    """Gera o PDF do relatório HTML de uma conferência já concluída (não altera nada)."""
+    from nucleo import GERENTE
+    from pdf_relatorio import html_para_pdf
+    t = GERENTE.obter(str(req.corpo.get("tarefa") or ""))
+    if not t or t.tipo != "conferencia":
+        raise ErroUsuario("Conferência não encontrada. Rode a conferência de novo.")
+    if t.estado not in ("concluida", "cancelada", "erro"):
+        raise ErroUsuario("Espere a conferência terminar.")
+    htmls = [c for _, c in t.arquivos if c.lower().endswith((".html", ".htm"))]
+    if not htmls:
+        raise ErroUsuario("Esta conferência não gerou relatório HTML.")
+    pdf = os.path.splitext(htmls[-1])[0] + ".pdf"
+    if not any(c == pdf for _, c in t.arquivos):
+        pdf = html_para_pdf(htmls[-1])
+        t.adicionar_arquivo("Relatório da conferência (PDF)", pdf)
+    indice = next(i for i, (_, c) in enumerate(t.arquivos) if c == pdf)
+    return 200, {"indice": indice, "nome": os.path.basename(pdf), "tarefa": t.id}

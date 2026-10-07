@@ -33,9 +33,9 @@
       <table id="tabela">
         <thead><tr>
           <th class="centro">Enviar</th><th data-ordem="fap">FAP</th><th data-ordem="parceiro">Parceiro</th>
-          <th data-ordem="situacao">Situação</th><th>Nº OS</th><th data-ordem="horas">Horas</th><th>Aprovadores</th>
+          <th data-ordem="situacao">Situação</th><th>Nº OS</th><th data-ordem="data">Data execução</th><th data-ordem="executante">Executante</th><th data-ordem="horas">Horas</th><th>Aprovadores</th>
         </tr></thead>
-        <tbody id="corpo"><tr><td colspan="7" class="vazio-tabela">Informe o período e clique em Conferir.</td></tr></tbody>
+        <tbody id="corpo"><tr><td colspan="9" class="vazio-tabela">Informe o período e clique em Conferir.</td></tr></tbody>
       </table>
     </div>
     <div class="acoes">
@@ -64,6 +64,9 @@
 
   let linhas = [], marcadas = new Set(), situacaoEnvio = {}, ocupado = false;
   const estadoOrdem = ordenavel($("#tabela"), desenhar);
+  // Uma linha por OS dentro da célula, para Nº OS, data e executante ficarem alinhados.
+  const porOS = (r, campo) => r.os.map((o) => esc(campo(o) || "-")).join("<br>");
+  const primeiraData = (r) => Math.min(...r.os.map((o) => { const d = BPMS.dataValida(o.data); return d ? d.getTime() : Infinity; }));
   const minutos = (h) => { const m = /^(\d+):(\d+)/.exec(h || ""); return m ? +m[1] * 60 + +m[2] : -1; };
 
   function desenhar() {
@@ -71,12 +74,15 @@
     const lista = linhas.slice().sort((a, b) => {
       const c = !chave ? comparar(+a.fap || 0, +b.fap || 0)
         : chave === "fap" ? comparar(+a.fap || 0, +b.fap || 0)
-        : chave === "horas" ? comparar(minutos(a.horas), minutos(b.horas)) : comparar(a[chave], b[chave]);
+        : chave === "horas" ? comparar(minutos(a.horas), minutos(b.horas))
+        : chave === "data" ? comparar(primeiraData(a), primeiraData(b))
+        : chave === "executante" ? comparar(a.os.map((o) => o.executante).join(", "), b.os.map((o) => o.executante).join(", "))
+        : comparar(a[chave], b[chave]);
       return desc ? -c : c;
     });
     const corpo = $("#corpo");
     if (!lista.length) {
-      corpo.innerHTML = `<tr><td colspan="7" class="vazio-tabela">Nenhuma FAP com OS no período.</td></tr>`;
+      corpo.innerHTML = `<tr><td colspan="9" class="vazio-tabela">Nenhuma FAP com OS no período.</td></tr>`;
     } else {
       corpo.innerHTML = lista.map((r) => {
         const pronta = r.situacao === "PRONTA";
@@ -86,7 +92,8 @@
         return `<tr class="${pronta ? "pronta" : "bloqueada"} clicavel" data-fap="${esc(r.fap)}">
           <td class="centro">${pronta && !env ? `<input type="checkbox" data-marcar="${esc(r.fap)}" ${marcadas.has(r.fap) ? "checked" : ""} aria-label="Enviar FAP ${esc(r.fap)}">` : ""}</td>
           <td>${esc(r.fap)}</td><td>${esc(r.parceiro)}</td><td>${sit}</td>
-          <td>${esc(r.num_os.map((n) => n || "-").join(", "))}</td><td>${esc(r.horas)}</td>
+          <td>${porOS(r, (o) => o.num)}</td><td>${porOS(r, (o) => o.data)}</td><td>${porOS(r, (o) => o.executante)}</td>
+          <td>${esc(r.horas)}</td>
           <td>${esc(r.aprovadores.map((a) => a.email).join(", "))}</td></tr>`;
       }).join("");
     }
@@ -107,7 +114,7 @@
 
   function detalhe(r) {
     if (!r) return;
-    const os = (lista) => lista.map((o) => `<li>OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)}${o.ok ? "" : " <b style='color:var(--perigo)'>‹ tempo quebrado</b>"}</li>`).join("");
+    const os = (lista) => lista.map((o) => `<li>OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.executante || "-")} · ${esc(o.realizado)}${o.ok ? "" : " <b style='color:var(--perigo)'>‹ tempo quebrado</b>"}</li>`).join("");
     informar(`FAP ${r.fap} - ${r.parceiro}`,
       `<b>OS (${r.os.length}, ${esc(r.horas)} h)</b><ul>${os(r.os) || "<li>nenhuma</li>"}</ul>`
       + (r.fora_periodo.length ? `<b>Fora do período (não entram)</b><ul>${os(r.fora_periodo)}</ul>` : "")

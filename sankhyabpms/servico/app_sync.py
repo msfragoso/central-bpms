@@ -111,3 +111,220 @@ def executar(req):
     alvo = parceiro or "todos os parceiros"
     t = GERENTE.iniciar("sync", f"Sync tarefa ClickUp ⇄ Experience ({alvo})", trabalho, pasta=PASTAS["raiz"])
     return 200, {"tarefa": t.id}
+
+
+# ============================================================================
+# LANÇAMENTOS SEM APONTAMENTO DE OS (só leitura)
+# ============================================================================
+# No Experience cada lançamento tem "status": CONCLUDED (task_status
+# "Finalizada", a OS foi apontada) ou PENDING (ainda sem OS). Esta consulta
+# lista os PENDING das FAPs das listas do ClickUp (as mesmas que o sync usa).
+
+def _lancamentos_do_periodo(token, impl_id, de_iso, ate_iso):
+    from experience_api._base import TASKS_API, auth_headers, post_com_retry
+    # O endpoint exige um /person/ no caminho, mas devolve o projeto inteiro
+    # (ver docstring de experience_api.tasks.search_tasks); qualquer id serve.
+    url = f"{TASKS_API}/filtering/implantation/{impl_id}/person/10898"
+    todos, pagina = [], 1
+    while pagina <= 40:
+        body = post_com_retry(url, auth_headers(token), {
+            "columns": [], "page": pagina, "length": 50, "order": {},
+            "filters": {"period": [f"{de_iso} 00:00:00", f"{ate_iso} 23:59:59"]}})
+        if body.get("response", {}).get("error"):
+            raise RuntimeError(body.get("response", {}).get("message") or "falha na busca de lançamentos")
+        lote = body.get("data", {}).get("result", [])
+        todos.extend(lote)
+        if len(lote) < 50:
+            break
+        pagina += 1
+    return todos
+
+
+ESTADO_SEM_OS = {}   # id do lançamento -> linha da última consulta (só esses podem ser excluídos)
+
+
+@rota("POST", "/api/sync/sem-os")
+def sem_os(req):
+    from datetime import date
+    ini, fim = periodo_br(req.corpo.get("de"), req.corpo.get("ate"))
+    parceiro = (req.corpo.get("parceiro") or "").strip()
+    incluir_futuras = bool(req.corpo.get("incluir_futuras"))
+
+    def trabalho(t):
+        import csv
+        import experience_api as exp
+        from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
+        from clickup_sync.list_discovery import extrair_fap_do_nome_lista, filtrar_listas_por_nome
+        from experience_api.clickup_tags import extrair_tag_clickup
+        from clickup_sync.text_matching import normalizar_texto
+        from nucleo import dados_arquivo
+
+        t.log("Lendo as listas do ClickUp...")
+        todas = _todas_listas()
+        listas = filtrar_listas_por_nome(todas, parceiro) if parceiro else todas
+        faps = {}
+        for l in listas:
+            fap = extrair_fap_do_nome_lista(l["name"])
+            if fap and fap not in faps:
+                faps[fap] = l["name"]
+        # Lista do ClickUp arquivada (nome com "Z" na frente) some da descoberta do
+        # sync, mas o lançamento esquecido continua no Experience: soma as FAPs
+        # cadastradas em clickup_sync/config.py (PARCEIRO_FAP).
+        from clickup_sync.config import PARCEIRO_FAP
+        from clickup_sync.text_matching import normalizar_texto
+        filtro = normalizar_texto(parceiro) if parceiro else ""
+        for nome, fap_cfg in PARCEIRO_FAP.items():
+            for f in (fap_cfg if isinstance(fap_cfg, list) else [fap_cfg]):
+                f = str(f)
+                if f not in faps and (not filtro or filtro in normalizar_texto(nome) or filtro == f):
+                    faps[f] = nome
+        if not faps:
+            return {"mensagem": "Nenhuma lista com FAP bate com esse filtro.", "resultado": {"linhas": []}}
+        t.log(f"{len(faps)} FAP(s) para consultar. Login no Experience...")
+        token = exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
+        if not token:
+            raise RuntimeError("Falha no login do Experience.")
+
+        hoje = date.today()
+        ate = fim if incluir_futuras else min(fim, hoje)
+        if ate < ini:
+            return {"mensagem": "O período escolhido é todo no futuro (marque 'Incluir datas futuras').",
+                    "resultado": {"linhas": []}}
+        linhas, falhas, fora_andamento = [], [], []
+        for i, (fap, nome_lista) in enumerate(sorted(faps.items(), key=lambda kv: kv[1].lower()), 1):
+            t.log(f"  [{i}/{len(faps)}] FAP {fap} - {nome_lista}")
+            try:
+                impl = exp.find_implantation_by_fap(token, fap)
+                if not impl:
+                    falhas.append(f"FAP {fap}: projeto não encontrado no Experience")
+                    continue
+                # Só projetos "Em Andamento" (pedido do Fragoso, 06/10/2026).
+                if normalizar_texto(impl.get("status") or "") != "em andamento":
+                    fora_andamento.append(f"{fap} ({impl.get('status') or 'sem status'})")
+                    continue
+                for l in _lancamentos_do_periodo(token, impl["id"], ini.isoformat(), ate.isoformat()):
+                    if str(l.get("status") or "").upper() != "PENDING":
+                        continue
+                    try:
+                        d = datetime.strptime(l.get("task_date") or "", "%d/%m/%Y").date()
+                    except ValueError:
+                        d = None
+                    linhas.append({
+                        "fap": fap, "lista": nome_lista, "parceiro": impl.get("company_name") or "",
+                        "executante": l.get("person_name") or "", "data": l.get("task_date") or "",
+                        "dias": (hoje - d).days if d else None,
+                        "inicio": l.get("task_hour_to_start") or "", "fim": l.get("task_hour_to_finish") or "",
+                        "etapa": l.get("stage_name") or "", "processo": l.get("process_name") or "",
+                        "atividade": l.get("procedure_name") or "", "situacao": l.get("task_status") or "",
+                        "tag_clickup": extrair_tag_clickup(l.get("additional_information")) or "",
+                        "id_experience": l.get("id"), "impl_id": impl["id"],
+                    })
+            except Exception as e:  # uma FAP com problema não derruba a consulta inteira
+                falhas.append(f"FAP {fap}: {e}")
+            time.sleep(0.15)
+
+        for f in falhas:
+            t.log("  Aviso: " + f)
+        if fora_andamento:
+            t.log(f"  {len(fora_andamento)} FAP(s) ignorada(s) por não estarem Em Andamento: " + ", ".join(fora_andamento))
+        ESTADO_SEM_OS.clear()
+        ESTADO_SEM_OS.update({str(r["id_experience"]): r for r in linhas})
+        linhas.sort(key=lambda r: (r["dias"] is None, -(r["dias"] or 0), r["executante"]))
+        caminho = dados_arquivo(f"sem_os_{ini:%Y%m%d}_a_{ate:%Y%m%d}_{datetime.now():%H%M%S}.csv")
+        cols = ["fap", "lista", "parceiro", "executante", "data", "dias", "inicio", "fim", "etapa", "processo",
+                "atividade", "situacao", "tag_clickup", "id_experience"]
+        with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.DictWriter(f, fieldnames=cols, delimiter=";", extrasaction="ignore")
+            w.writeheader()
+            w.writerows(linhas)
+        t.adicionar_arquivo("Lançamentos sem OS (.csv)", caminho)
+        consultadas = len(faps) - len(fora_andamento) - len([f for f in falhas if "não encontrado" in f])
+        msg = (f"{len(linhas)} lançamento(s) sem apontamento de OS entre {ini:%d/%m/%Y} e {ate:%d/%m/%Y}, "
+               f"em {consultadas} FAP(s) Em Andamento. Nada foi alterado.")
+        if falhas:
+            msg += f" {len(falhas)} FAP(s) com aviso (ver log)."
+        return {"mensagem": msg, "resultado": {"linhas": linhas}}
+
+    alvo = parceiro or "todos os parceiros"
+    t = GERENTE.iniciar("sync_sem_os", f"Lançamentos sem OS ({alvo})", trabalho, pasta=PASTAS["raiz"])
+    return 200, {"tarefa": t.id}
+
+
+@rota("POST", "/api/sync/sem-os/excluir")
+def sem_os_excluir(req):
+    """
+    Exclui do Experience os lançamentos pendentes marcados na tabela. Antes de
+    cada exclusão, busca de novo o dia daquele projeto e só exclui se o
+    lançamento ainda existir e continuar PENDING (sem OS). Cada exclusão fica
+    em log_exclusoes_orfaos.jsonl (o mesmo log das exclusões do sync), com
+    origem "faxina_sem_os".
+    """
+    exigir_confirmacao(req)
+    ids = [str(i) for i in (req.corpo.get("ids") or [])]
+    if not ids:
+        raise ErroUsuario("Nenhum lançamento marcado.")
+    faltando = [i for i in ids if i not in ESTADO_SEM_OS]
+    if faltando:
+        raise ErroUsuario("Alguns lançamentos não estão na última consulta. Consulte de novo antes de excluir.")
+    alvos = [ESTADO_SEM_OS[i] for i in ids]
+
+    def trabalho(t):
+        import experience_api as exp
+        from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
+        from clickup_sync.orphan_check import registrar_exclusao, CAMINHO_LOG_EXCLUSOES_PADRAO
+
+        token = exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
+        if not token:
+            raise RuntimeError("Falha no login do Experience.")
+        situacao, ok, pulados, erros = {}, 0, 0, 0
+        cache_dia = {}
+        for i, r in enumerate(alvos, 1):
+            rotulo = f"{r['id_experience']} ({r['executante']}, FAP {r['fap']}, {r['data']}, {r['atividade'] or r['etapa']})"
+            try:
+                d = datetime.strptime(r["data"], "%d/%m/%Y").date().isoformat()
+                chave = (r["impl_id"], d)
+                if chave not in cache_dia:
+                    cache_dia[chave] = {str(x.get("id")): x for x in _lancamentos_do_periodo(token, r["impl_id"], d, d)}
+                atual = cache_dia[chave].get(str(r["id_experience"]))
+                if not atual:
+                    situacao[str(r["id_experience"])] = "JÁ NÃO EXISTE"
+                    t.log(f"  [{i}/{len(alvos)}] pulado, já não existe: {rotulo}")
+                    pulados += 1
+                    continue
+                if str(atual.get("status") or "").upper() != "PENDING":
+                    situacao[str(r["id_experience"])] = "TEM OS"
+                    t.log(f"  [{i}/{len(alvos)}] pulado, já está {atual.get('status')} ({atual.get('task_status')}): {rotulo}")
+                    pulados += 1
+                    continue
+                resp = exp.delete_task(token, r["id_experience"])
+                erro = (resp.get("response") or {}).get("error")
+                mensagem = (resp.get("response") or {}).get("message") or ""
+                registrar_exclusao(CAMINHO_LOG_EXCLUSOES_PADRAO, {
+                    "origem": "faxina_sem_os", "motivo": "lancamento_sem_apontamento_de_os",
+                    "lancamento_id": r["id_experience"], "clickup_task_id": r["tag_clickup"] or None,
+                    "implantation_id": r["impl_id"], "fap": r["fap"], "person_name": r["executante"],
+                    "task_date": r["data"], "horario": f"{r['inicio']}-{r['fim']}", "etapa": r["etapa"],
+                    "atividade": r["atividade"], "status_exclusao": "falha" if erro else "sucesso",
+                    "mensagem": mensagem if erro else None,
+                })
+                if erro:
+                    situacao[str(r["id_experience"])] = "FALHOU"
+                    t.log(f"  [{i}/{len(alvos)}] FALHOU: {rotulo}: {mensagem}")
+                    erros += 1
+                else:
+                    situacao[str(r["id_experience"])] = "EXCLUÍDO"
+                    t.log(f"  [{i}/{len(alvos)}] excluído: {rotulo}")
+                    ESTADO_SEM_OS.pop(str(r["id_experience"]), None)
+                    ok += 1
+            except Exception as e:
+                situacao[str(r["id_experience"])] = "FALHOU"
+                t.log(f"  [{i}/{len(alvos)}] FALHOU: {rotulo}: {e}")
+                erros += 1
+            time.sleep(0.2)
+        t.adicionar_arquivo("Log de exclusões (.jsonl)", CAMINHO_LOG_EXCLUSOES_PADRAO)
+        return {"mensagem": f"{ok} lançamento(s) excluído(s), {pulados} pulado(s), {erros} com falha.",
+                "resultado": {"situacao": situacao}}
+
+    t = GERENTE.iniciar("sync_sem_os_excluir", f"Exclusão de {len(alvos)} lançamento(s) sem OS", trabalho,
+                        pasta=PASTAS["raiz"])
+    return 200, {"tarefa": t.id}
