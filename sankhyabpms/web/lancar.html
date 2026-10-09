@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lançar ClickUp</title>
 <link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
 <script src="assets/login.js"></script>
 </head>
 <body>
@@ -54,6 +59,7 @@
           <label for="vencimento">6. Vencimento <span class="ajuda">(opcional)</span></label>
           <input id="vencimento">
           <div class="atalhos">
+            <button class="btn secundario pequeno" data-dias="-1">Ontem</button>
             <button class="btn secundario pequeno" data-dias="0">Hoje</button>
             <button class="btn secundario pequeno" data-dias="1">Amanhã</button>
             <button class="btn secundario pequeno" data-dias="7">+7d</button>
@@ -64,6 +70,10 @@
         <div class="campo c6">
           <label for="periodo">7. Período <span class="ajuda">(opcional)</span></label>
           <input id="periodo" placeholder="ex.: 08h-10h">
+          <div class="atalhos">
+            <button class="btn secundario pequeno" type="button" data-periodo="08h-18h">08h-18h</button>
+            <button class="btn secundario pequeno" type="button" data-periodo="14h-18h">14h-18h</button>
+          </div>
         </div>
       </div>
     </section>
@@ -164,6 +174,7 @@
   }
 
   $("#btn-fap-recarregar").onclick = () => { const p = $("#parceiro").value; if (opcoes.parceiros.includes(p)) carregarFaps(p, true); };
+  $$("[data-periodo]").forEach((b) => b.onclick = () => { $("#periodo").value = b.dataset.periodo; });
   $$("[data-dias]").forEach((b) => b.onclick = () => { $("#vencimento").value = b.dataset.dias === "x" ? "" : hojeBR(+b.dataset.dias); });
 
   $("#periodo").addEventListener("blur", () => setTimeout(async () => {

@@ -176,6 +176,9 @@ def main():
     url = f"http://127.0.0.1:{PORTA}/"
     abrir = CONFIG.get("abrir_navegador", True) and "--sem-navegador" not in sys.argv
     try:
+        # No Windows o SO_REUSEADDR padrão deixa vários serviços na mesma porta
+        # (e o mais antigo continua respondendo). Sem ele, o segundo cai no except.
+        ThreadingHTTPServer.allow_reuse_address = False
         servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), Handler)
     except OSError:
         # Porta ocupada: normalmente é a própria Central já aberta -- só abre a página.

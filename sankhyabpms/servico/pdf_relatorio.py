@@ -40,6 +40,9 @@ def html_para_pdf(caminho_html):
     r = subprocess.run([exe, "-c", _SCRIPT, caminho_html, caminho_pdf, CHROME],
                        capture_output=True, text=True, timeout=180,
                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if "No module named 'playwright'" in (r.stderr or ""):
+        raise RuntimeError(r"Falta instalar o Playwright neste PC: dê duplo clique em "
+                           r"C:\sankhyabpms\Instalar_Playwright.bat e tente de novo.")
     if r.returncode != 0 or not os.path.isfile(caminho_pdf):
         raise RuntimeError("Não consegui gerar o PDF: " + (r.stderr or r.stdout or "erro desconhecido").strip()[-400:])
     return caminho_pdf

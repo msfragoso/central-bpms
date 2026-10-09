@@ -208,6 +208,8 @@ const BPMS = (() => {
 
   // ------------------------------------------------------------ toast / modal
   function toast(msg, tipo = "") {
+    // mesma mensagem já na tela: não empilha outra igual
+    if ([...$("#toasts").children].some((x) => x.textContent === msg)) return;
     const t = document.createElement("div");
     t.className = `toast ${tipo}`; t.textContent = msg;
     $("#toasts").append(t);

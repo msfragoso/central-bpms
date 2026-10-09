@@ -129,6 +129,92 @@ def _tag_id_do_experience(t, om_df, ini, fim, caminho_cu=None):
     return om_df
 
 
+# ============================================================================
+# WHATSAPP DOS CONSULTORES (08/10/2026, opção 1: link wa.me, envio pelo usuário)
+# ============================================================================
+# A Central só monta o texto e o link; quem aperta "Enviar" é o Fragoso, no
+# próprio WhatsApp dele. Os celulares ficam em dados/contatos_consultores.json
+# ({"GUILHERME": {"nome": "...", "celular": "5567999999999"}, ...}).
+ARQ_CONTATOS = "contatos_consultores.json"
+
+
+def _contatos():
+    from nucleo import ler_json_dados
+    return ler_json_dados(ARQ_CONTATOS, {}) or {}
+
+
+def _so_digitos_celular(txt):
+    d = re.sub(r"\D", "", str(txt or ""))
+    if not d:
+        return ""
+    if len(d) in (10, 11):      # DDD + número, sem o 55
+        d = "55" + d
+    if not (12 <= len(d) <= 13 and d.startswith("55")):
+        raise ErroUsuario(f"Celular inválido: {txt}. Use DDD + número, ex.: (67) 99999-9999.")
+    return d
+
+
+@rota("GET", "/api/conferencia/contatos")
+def contatos(req):
+    from config_conferencia import CORES, CONSULTOR_MAP
+    salvos = _contatos()
+    nomes = {}
+    for nome, chave in CONSULTOR_MAP.items():
+        if chave in CORES and nome.isupper() and len(nome) > len(nomes.get(chave, "")):
+            nomes[chave] = nome.title()
+    lista = [{"consultor": c, "nome": (salvos.get(c) or {}).get("nome") or nomes.get(c, c.title()),
+              "celular": (salvos.get(c) or {}).get("celular", "")} for c in sorted(CORES)]
+    return 200, {"contatos": lista}
+
+
+@rota("POST", "/api/conferencia/contatos")
+def salvar_contatos(req):
+    import json
+    from config_conferencia import CORES
+    novos = {}
+    for item in req.corpo.get("contatos") or []:
+        c = str(item.get("consultor") or "").strip().upper()
+        if c not in CORES:
+            continue
+        novos[c] = {"nome": str(item.get("nome") or "").strip()[:80], "celular": _so_digitos_celular(item.get("celular"))}
+    with open(dados_arquivo(ARQ_CONTATOS), "w", encoding="utf-8") as f:
+        json.dump(novos, f, ensure_ascii=False, indent=2)
+    return 200, {"ok": True, "gravados": sum(1 for v in novos.values() if v["celular"])}
+
+
+def _mensagens_whatsapp(mensagens, periodo_texto):
+    """Um texto por consultor com as mesmas pendências do cartão do relatório."""
+    salvos = _contatos()
+    saida = []
+    for m in mensagens:
+        if not m["linhas"]:
+            continue
+        contato = salvos.get(m["consultor"]) or {}
+        nome = contato.get("nome") or m["nome"]
+        primeiro = (nome.split() or [nome])[0].title()
+        pend = [l for l in m["linhas"] if not l["aguardando_gp"]]
+        gp = [l for l in m["linhas"] if l["aguardando_gp"]]
+        partes = [f"Olá, {primeiro}! Tudo bem?",
+                  f"Na conferência de OS ({periodo_texto}, feita em {datetime.now():%d/%m/%Y às %Hh%M}) "
+                  "ficaram estes apontamentos para você verificar, por gentileza:"]
+        if pend:
+            partes.append("")
+            partes.append("*Sem apontamento de OS no Sankhya:*")
+            for l in pend:
+                # ⚠️ em forma de emoji (U+26A0 + U+FE0F); sem o U+FE0F o WhatsApp mostrava "?".
+                atraso = f" ⚠️ {l['dias']} dias" if l["dias"] >= 2 else ""
+                partes.append(f"• {l['data']} · {l['periodo']} · {l['parceiro']}{atraso}")
+        if gp:
+            partes.append("")
+            partes.append("*Aguardando aprovação do GP:*")
+            for l in gp:
+                partes.append(f"• {l['data']} · {l['periodo']} · {l['parceiro']}" + (f" ({l['os']})" if l["os"] else ""))
+        partes += ["", f"Total: {len(m['linhas'])}. Obrigado!"]
+        saida.append({"consultor": m["consultor"], "nome": nome, "celular": contato.get("celular", ""),
+                      "total": len(m["linhas"]), "texto": "\n".join(partes)})
+    return saida
+
+
 @rota("POST", "/api/conferencia/executar")
 def executar(req):
     from config_conferencia import CAMINHO_DESTINO_PADRAO
@@ -192,7 +278,12 @@ def executar(req):
                                      consultor_alvo=consultor)
 
             print("\n=== ETAPA 4: relatório HTML ===")
-            caminho_html = gerar_html(resultado, periodo_texto, destino)
+            fonte_os = {"om": "Sankhya-OM" + (" (com TAG ID do Experience)" if usar_tag_id else ""),
+                        "experience": "Sankhya Experience",
+                        "excel": "Excel exportado do Sankhya"}.get(origem_sankhya)
+            mensagens = []
+            caminho_html = gerar_html(resultado, periodo_texto, destino, fonte_os=fonte_os, mensagens=mensagens)
+            whatsapp = _mensagens_whatsapp(mensagens, periodo_texto)
             t.adicionar_arquivo("Relatório da conferência (HTML)", caminho_html)
 
             if atualizar:
@@ -207,7 +298,7 @@ def executar(req):
                 msg = "Relatório gerado (nada foi alterado no ClickUp)."
             print("\n=== CONCLUÍDO ===")
             marcar_uso("conferencia")
-            return {"mensagem": msg}
+            return {"mensagem": msg, "resultado": {"whatsapp": whatsapp}}
         except OperacaoCanceladaPeloUsuario as e:
             raise Cancelada(str(e))
 
@@ -253,3 +344,41 @@ def gerar_pdf(req):
         t.adicionar_arquivo("Relatório da conferência (PDF)", pdf)
     indice = next(i for i, (_, c) in enumerate(t.arquivos) if c == pdf)
     return 200, {"indice": indice, "nome": os.path.basename(pdf), "tarefa": t.id}
+
+
+# Fila de avisos no WhatsApp: a página registra quando abriu a conversa de cada
+# consultor (quem aperta Enviar é o Fragoso). Fica em dados/whatsapp_avisos.jsonl.
+ARQ_AVISOS = "whatsapp_avisos.jsonl"
+
+
+@rota("POST", "/api/conferencia/whatsapp-avisado")
+def whatsapp_avisado(req):
+    import json
+    tarefa = str(req.corpo.get("tarefa") or "")[:40]
+    consultor = str(req.corpo.get("consultor") or "")[:40]
+    if not tarefa or not consultor:
+        raise ErroUsuario("Faltou a conferência ou o consultor.")
+    quando = datetime.now().strftime("%d/%m/%Y %H:%M")
+    with open(dados_arquivo(ARQ_AVISOS), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"tarefa": tarefa, "consultor": consultor, "quando": quando,
+                            "celular": str(req.corpo.get("celular") or "")[:20]}, ensure_ascii=False) + "\n")
+    return 200, {"quando": quando}
+
+
+@rota("GET", "/api/conferencia/whatsapp-avisos")
+def whatsapp_avisos(req):
+    import json
+    tarefa = req.query.get("tarefa") or ""
+    avisos = {}
+    try:
+        with open(dados_arquivo(ARQ_AVISOS), encoding="utf-8") as f:
+            for linha in f:
+                try:
+                    a = json.loads(linha)
+                except ValueError:
+                    continue
+                if a.get("tarefa") == tarefa:
+                    avisos[a["consultor"]] = a["quando"]
+    except OSError:
+        pass
+    return 200, {"avisos": avisos}

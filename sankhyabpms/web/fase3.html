@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Apontamentos travados</title>
 <link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
 <script src="assets/login.js"></script>
 </head>
 <body>
@@ -44,6 +49,14 @@
       <div class="arquivos" id="arquivos"></div>
     </section>
   </div>
+  <section class="card faixa" style="margin-top:14px">
+    <h2 data-texto="fase3.relatorio.titulo">Relatório do ciclo de produtividade</h2>
+    <p style="color:var(--suave);margin:-4px 0 12px" data-texto="fase3.relatorio.descricao">A planilha funciona como base de dados do ciclo (só acumula, nunca apaga). No fim do ciclo, gere o relatório em PDF com tudo o que está na aba, incluindo o que foi editado à mão em Desconta e Motivo.</p>
+    <div class="campos">
+      <div class="campo c6"><label for="aba-rel">Aba do ciclo</label><select id="aba-rel"></select></div>
+    </div>
+    <div class="acoes"><button class="btn" id="btn-relatorio">📄 Gerar relatório do ciclo (PDF)</button></div>
+  </section>
 </main>
 <script src="assets/comum.js"></script>
 <script>
@@ -66,7 +79,20 @@
   $("#de").addEventListener("input", atualizarAba);
   $("#ate").addEventListener("input", atualizarAba);
 
-  function travar(sim) { $("#btn-executar").disabled = sim; $("#btn-testar").disabled = sim; }
+  function travar(sim) { $("#btn-executar").disabled = sim; $("#btn-testar").disabled = sim; $("#btn-relatorio").disabled = sim; }
+  $("#btn-relatorio").onclick = () => {
+    const aba = $("#aba-rel").value;
+    if (!aba) return toast("Escolha a aba do ciclo.", "erro");
+    travar(true);
+    BPMS.iniciar("/api/fase3/relatorio", { aba }, el, (t) => {
+      travar(false);
+      const pdf = t && (t.arquivos || []).find((a) => /\.pdf$/i.test(a.nome));
+      if (pdf) window.open(`${["127.0.0.1", "localhost"].includes(location.hostname) ? "" : "http://127.0.0.1:8766"}/api/tarefas/${t.id}/arquivo/${pdf.indice}`, "_blank");
+    });
+  };
+  get("/api/fase3/abas").then((r) => {
+    $("#aba-rel").innerHTML = r.abas.map((a) => `<option ${a === r.atual ? "selected" : ""}>${esc(a)}</option>`).join("");
+  }).catch(() => {});
   function aoTerminar(t) {
     travar(false);
     if (t && t.resultado) {
@@ -106,7 +132,7 @@
       const o = await get("/api/fase3/opcoes");
       $("#de").value = o.de; $("#ate").value = o.ate; $("#url").value = o.url; $("#aba").textContent = `Aba de destino: ${o.aba}`;
     } catch (e) { toast(e.message, "erro"); }
-    BPMS.retomar(["fase3"], el, aoTerminar, () => travar(true));
+    BPMS.retomar(["fase3", "fase3_relatorio"], el, (t) => (t && t.tipo === "fase3_relatorio" ? travar(false) : aoTerminar(t)), () => travar(true));
   })();
 })();
 </script>

@@ -83,6 +83,53 @@ class _JanelaFalsa:
         self.log_queue = _FilaParaTarefa(tarefa, sinal_fim)
 
 
+# ============================================================================
+# CONSULTOR FORA DO PROJETO (08/10/2026, "Com confirmação")
+# ============================================================================
+# O sync_engine só anota em linha["_fora_do_projeto"] os casos "não está
+# vinculado ao projeto no Experience". Aqui eles viram uma lista na tela; o
+# consultor só é incluído no projeto quando o usuário clica e confirma.
+
+ESTADO_FORA = {}   # chave -> caso (só os da última execução podem ser cadastrados)
+
+
+def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t):
+    """Roda main._fluxo_principal e devolve os casos de consultor fora do projeto."""
+    capturado = []
+    original = m.imprimir_relatorio
+
+    def _imprimir(relatorio, *a, **k):
+        capturado.extend(relatorio or [])
+        return original(relatorio, *a, **k)
+
+    m.imprimir_relatorio = _imprimir
+    try:
+        m._fluxo_principal(filtro, de_iso, ate_iso, modelo_filtro, cache_listas,
+                           _JanelaFalsa(t, m._SINAL_FIM_EXECUCAO))
+    finally:
+        m.imprimir_relatorio = original
+
+    casos = {}
+    for linha in capturado:
+        f = linha.get("_fora_do_projeto") if isinstance(linha, dict) else None
+        if not f:
+            continue
+        chave = f"{f['implantation_id']}|{(f.get('email') or f.get('consultor') or '').lower()}|{f['process_id']}"
+        c = casos.setdefault(chave, {"chave": chave, "implantation_id": f["implantation_id"], "fap": str(f["fap"]),
+                                     "consultor": f.get("consultor") or "", "email": f.get("email") or "",
+                                     "process_id": f["process_id"], "parceiro": linha.get("parceiro") or "",
+                                     "datas": [], "tarefas": []})
+        if f.get("data") and f["data"] not in c["datas"]:
+            c["datas"].append(f["data"])
+        if f.get("task_id") and f["task_id"] not in c["tarefas"]:
+            c["tarefas"].append(f["task_id"])
+    for c in casos.values():
+        c["datas"].sort()
+    ESTADO_FORA.clear()
+    ESTADO_FORA.update(casos)
+    return list(casos.values())
+
+
 @rota("POST", "/api/sync/executar")
 def executar(req):
     exigir_confirmacao(req)
@@ -99,14 +146,17 @@ def executar(req):
         ui._salvar_ultima_execucao(parceiro, valor_modelo)
         inicio = time.time()
         cache_listas = {"dados": _cache["listas"]}
-        m._fluxo_principal(parceiro or None, ini.isoformat(), fim.isoformat(), modelo_filtro,
-                           cache_listas, _JanelaFalsa(t, m._SINAL_FIM_EXECUCAO))
+        fora = _rodar_fluxo(m, parceiro or None, ini.isoformat(), fim.isoformat(), modelo_filtro, cache_listas, t)
         logs = [p for p in glob.glob(os.path.join(PASTAS["raiz"], "logs", "log_*.txt"))
                 if os.path.getmtime(p) >= inicio - 1]
         if logs:
             t.adicionar_arquivo("Log completo (.txt)", max(logs, key=os.path.getmtime))
         marcar_uso("sync")
-        return {"mensagem": "Execução finalizada. Confira o relatório final no log."}
+        msg = "Execução finalizada. Confira o relatório final no log."
+        if fora:
+            msg += (f" {len(fora)} consultor(es) fora do projeto no Experience: veja a lista abaixo "
+                    "para cadastrar e lançar.")
+        return {"mensagem": msg, "resultado": {"fora_do_projeto": fora}}
 
     alvo = parceiro or "todos os parceiros"
     t = GERENTE.iniciar("sync", f"Sync tarefa ClickUp ⇄ Experience ({alvo})", trabalho, pasta=PASTAS["raiz"])
@@ -326,5 +376,56 @@ def sem_os_excluir(req):
                 "resultado": {"situacao": situacao}}
 
     t = GERENTE.iniciar("sync_sem_os_excluir", f"Exclusão de {len(alvos)} lançamento(s) sem OS", trabalho,
+                        pasta=PASTAS["raiz"])
+    return 200, {"tarefa": t.id}
+
+
+@rota("POST", "/api/sync/incluir-consultor")
+def incluir_consultor(req):
+    """
+    Inclui no projeto do Experience (como Consultor(a)/Analista, no processo da
+    tarefa) o consultor que o último sync apontou como fora do projeto e roda o
+    sync de novo só para aquela FAP e aquelas datas, o que cria o lançamento.
+    Cada inclusão fica em dados/inclusoes_consultores.jsonl.
+    """
+    exigir_confirmacao(req)
+    chave = str(req.corpo.get("chave") or "")
+    caso = ESTADO_FORA.get(chave)
+    if not caso:
+        raise ErroUsuario("Esse caso não está na última execução do sync. Rode o sync de novo.")
+    if not caso["email"]:
+        raise ErroUsuario(f"Sem e-mail de {caso['consultor']} na tarefa do ClickUp: cadastre pelo Experience.")
+
+    def trabalho(t):
+        import json
+        import experience_api as exp
+        from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
+        from experience_api.persons import incluir_consultor_no_projeto
+        from nucleo import dados_arquivo
+
+        token = exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
+        if not token:
+            raise RuntimeError("Falha no login do Experience.")
+        t.log(f"Incluindo {caso['consultor']} ({caso['email']}) no projeto FAP {caso['fap']}, "
+              f"processo {caso['process_id']}...")
+        ok, msg = incluir_consultor_no_projeto(token, caso["implantation_id"], caso["email"], caso["process_id"])
+        with open(dados_arquivo("inclusoes_consultores.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "ok": ok,
+                                "mensagem": msg, **{k: caso[k] for k in ("implantation_id", "fap", "consultor",
+                                                                          "email", "process_id", "datas")}},
+                               ensure_ascii=False) + "\n")
+        t.log(("  OK: " if ok else "  NÃO incluído: ") + msg)
+        if not ok:
+            raise RuntimeError(f"Consultor não incluído: {msg}")
+        ESTADO_FORA.pop(chave, None)
+        if not caso["datas"]:
+            return {"mensagem": msg + ". Rode o sync para criar o lançamento."}
+        t.log(f"Rodando o sync da FAP {caso['fap']} de {caso['datas'][0]} a {caso['datas'][-1]}...")
+        m = _modulo_main()
+        _rodar_fluxo(m, caso["fap"], caso["datas"][0], caso["datas"][-1], None,
+                     {"dados": _cache["listas"]}, t)
+        return {"mensagem": msg + ". Sync da FAP rodado de novo; confira o relatório no log."}
+
+    t = GERENTE.iniciar("sync_incluir", f"Cadastrar {caso['consultor']} na FAP {caso['fap']} e lançar", trabalho,
                         pasta=PASTAS["raiz"])
     return 200, {"tarefa": t.id}

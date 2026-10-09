@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sync tarefa ClickUp</title>
 <link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
 <script src="assets/login.js"></script>
 </head>
 <body>
@@ -46,6 +51,17 @@
       <div class="arquivos" id="arquivos"></div>
     </section>
   </div>
+
+  <section class="card faixa oculto" id="card-fora" style="margin-top:14px">
+    <h2 data-texto="sync.fora.titulo">Consultores fora do projeto no Experience</h2>
+    <p style="color:var(--suave);margin:-4px 0 12px" data-texto="sync.fora.descricao">O sync não lançou estas tarefas porque o consultor não está na equipe do projeto. "Cadastrar no projeto e lançar" inclui o consultor como Consultor(a)/Analista no processo da tarefa e roda o sync de novo só para essa FAP e essas datas. Nada é cadastrado sem a sua confirmação.</p>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr><th>Consultor</th><th>E-mail</th><th>Parceiro</th><th>FAP</th><th>Processo</th><th>Datas</th><th>Tarefas</th><th></th></tr></thead>
+        <tbody id="corpo-fora"></tbody>
+      </table>
+    </div>
+  </section>
 
   <section class="card faixa" style="margin-top:14px">
     <h2 data-texto="sync.semos.titulo">Lançamentos sem apontamento de OS</h2>
@@ -115,7 +131,46 @@
   }
   $("#parceiro").addEventListener("input", contar);
 
-  const travar = (sim) => { $("#btn-executar").disabled = sim; $("#btn-sem-os").disabled = sim; };
+  const travar = (sim) => { $("#btn-executar").disabled = sim; $("#btn-sem-os").disabled = sim; if (typeof desenharFora === "function") desenharFora(); };
+
+  // ---------------- consultor fora do projeto (cadastro só com confirmação)
+  let fora = [], foraSituacao = {};
+  const dataBr = (iso) => (iso || "").split("-").reverse().join("/");
+  function desenharFora() {
+    $("#card-fora").classList.toggle("oculto", !fora.length);
+    $("#corpo-fora").innerHTML = fora.map((c) => { const sit = foraSituacao[c.chave]; return `<tr>
+      <td>${esc(c.consultor)}</td><td>${c.email ? esc(c.email) : '<span class="etiqueta falhou">sem e-mail</span>'}</td>
+      <td>${esc(c.parceiro)}</td><td>${esc(c.fap)}</td><td>${esc(c.process_id)}</td>
+      <td>${c.datas.map(dataBr).map(esc).join(", ")}</td>
+      <td>${c.tarefas.map((id) => `<a href="https://app.clickup.com/t/${encodeURIComponent(id)}" target="_blank" rel="noopener">#${esc(id)}</a>`).join(" ")}</td>
+      <td>${sit ? `<span class="etiqueta ${sit === "CADASTRADO" ? "enviada" : "falhou"}">${esc(sit)}</span>`
+        : `<button class="btn pequeno" data-fora="${esc(c.chave)}" ${c.email && !$("#btn-executar").disabled ? "" : "disabled"}>Cadastrar no projeto e lançar</button>`}</td></tr>`; }).join("");
+  }
+  let foraEmCurso = null;
+  $("#corpo-fora").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-fora]"); if (!b) return;
+    const c = fora.find((x) => x.chave === b.dataset.fora); if (!c) return;
+    const ok = await confirmar(`Cadastrar ${c.consultor} no projeto?`,
+      `<b>Consultor:</b> ${esc(c.consultor)} (${esc(c.email)})<br><b>Projeto:</b> ${esc(c.parceiro)} · FAP ${esc(c.fap)}<br><b>Processo:</b> ${esc(c.process_id)} · papel Consultor(a)/Analista<br><b>Datas:</b> ${c.datas.map(dataBr).map(esc).join(", ")}`
+      + `<div class="aviso">Inclui o consultor na equipe do projeto no Experience (só pessoa da Sankhya). Se o processo já tiver responsável Sankhya, o consultor é <b>acrescentado</b> — ninguém sai. Qualquer outro pedido de confirmação do Experience interrompe sem cadastrar.</div>`
+      + `<div class="aviso">Depois roda o sync só da FAP ${esc(c.fap)} de ${esc(dataBr(c.datas[0]))} a ${esc(dataBr(c.datas[c.datas.length - 1]))}, que cria o lançamento.</div>`,
+      { botao: "Cadastrar e lançar" });
+    if (!ok) return;
+    foraEmCurso = c.chave; travar(true); desenharFora();
+    BPMS.iniciar("/api/sync/incluir-consultor", { chave: c.chave, confirmar: true }, el, aoTerminarIncluir);
+  });
+  const aoTerminarIncluir = (t) => {
+    travar(false);
+    if (foraEmCurso) foraSituacao[foraEmCurso] = t && t.estado === "concluida" ? "CADASTRADO" : "NÃO CADASTRADO";
+    foraEmCurso = null; desenharFora();
+  };
+  const aoTerminarSync = (t) => {
+    travar(false);
+    if (t && t.resultado && t.resultado.fora_do_projeto) {
+      fora = t.resultado.fora_do_projeto; foraSituacao = {}; desenharFora();
+      if (fora.length) $("#card-fora").scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
   // ---------------- lançamentos sem OS
   let semOs = [], soMarcados = new Set(), soSituacao = {};
@@ -212,7 +267,7 @@
       { botao: "Executar", perigo: todas });
     if (!ok) return;
     travar(true);
-    BPMS.iniciar("/api/sync/executar", { ...corpo, confirmar: true }, el, () => travar(false));
+    BPMS.iniciar("/api/sync/executar", { ...corpo, confirmar: true }, el, aoTerminarSync);
   };
 
   (async () => {
@@ -222,7 +277,7 @@
       $("#modelo").value = o.modelo; $("#parceiro").value = o.parceiro; $("#de").value = o.de; $("#ate").value = o.ate;
       contar();
     } catch (e) { toast(e.message, "erro"); }
-    BPMS.retomar(["sync", "sync_sem_os", "sync_sem_os_excluir"], el, (t) => (t && t.tipo === "sync_sem_os" ? aoTerminarSemOs(t) : t && t.tipo === "sync_sem_os_excluir" ? aoTerminarExcluir(t) : travar(false)), () => travar(true));
+    BPMS.retomar(["sync", "sync_sem_os", "sync_sem_os_excluir", "sync_incluir"], el, (t) => (t && t.tipo === "sync_sem_os" ? aoTerminarSemOs(t) : t && t.tipo === "sync_sem_os_excluir" ? aoTerminarExcluir(t) : t && t.tipo === "sync" ? aoTerminarSync(t) : travar(false)), () => travar(true));
   })();
 })();
 </script>

@@ -148,7 +148,18 @@ class _Om:
                 return
             except Exception:
                 self._ctx = None
-        from playwright.sync_api import sync_playwright
+        try:
+            # A pasta de bibliotecas do usuário só entra no sys.path se já existia
+            # quando o serviço subiu; um pip install --user feito depois não seria visto.
+            import importlib
+            import site
+            if os.path.isdir(site.getusersitepackages()):
+                site.addsitedir(site.getusersitepackages())
+            importlib.invalidate_caches()
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            raise RuntimeError(r"Falta instalar o Playwright neste PC: dê duplo clique em "
+                               r"C:\sankhyabpms\Instalar_Playwright.bat e tente de novo.")
         if self._pw is None:
             self._pw = sync_playwright().start()
         os.makedirs(PERFIL, exist_ok=True)

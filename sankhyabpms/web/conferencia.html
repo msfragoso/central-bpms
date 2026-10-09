@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Conferência de OS</title>
 <link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
 <script src="assets/login.js"></script>
 </head>
 <body>
@@ -73,6 +78,32 @@
       </div>
     </section>
   </div>
+  <section class="card faixa oculto" id="card-whats" style="margin-top:14px">
+    <h2 data-texto="conf.whats.titulo">Avisar os consultores no WhatsApp</h2>
+    <p style="color:var(--suave);margin:-4px 0 12px" data-texto="conf.whats.descricao">Uma mensagem por consultor com as mesmas pendências do relatório. "Próximo consultor" abre a conversa no seu WhatsApp do Chrome com o texto pronto; confira e aperte Enter lá, depois volte e clique em Próximo de novo. Nada é enviado sem você.</p>
+    <div class="acoes" style="margin:0 0 10px">
+      <button class="btn" id="btn-whats-proximo" type="button">▶ Próximo consultor</button>
+      <span class="ajuda" id="whats-progresso" style="color:var(--suave);font-size:13px"></span>
+    </div>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr><th>Consultor</th><th class="centro">Pendências</th><th>Celular</th><th>Mensagem</th><th>Situação</th><th></th></tr></thead>
+        <tbody id="corpo-whats"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card faixa" style="margin-top:14px">
+    <details id="det-contatos">
+      <summary style="cursor:pointer;font-weight:600" data-texto="conf.contatos.titulo">📇 Celulares dos consultores (WhatsApp)</summary>
+      <p style="color:var(--suave);margin:8px 0 12px" data-texto="conf.contatos.descricao">DDD + número, ex.: (67) 99999-9999. Ficam só neste computador (dados/contatos_consultores.json).</p>
+      <div class="tabela-caixa"><table>
+        <thead><tr><th>Consultor</th><th>Nome na mensagem</th><th>Celular</th></tr></thead>
+        <tbody id="corpo-contatos"></tbody>
+      </table></div>
+      <div class="acoes"><button class="btn" id="btn-salvar-contatos" type="button">Salvar celulares</button></div>
+    </details>
+  </section>
 </main>
 <script src="assets/comum.js"></script>
 <script>
@@ -83,6 +114,69 @@
   [$("#de"), $("#ate")].forEach(mascaraData);
 
   function travar(sim) { $("#btn-conferir").disabled = sim; $("#btn-borracha").disabled = sim; }
+  // ---------------- WhatsApp dos consultores (o envio é feito por você, no WhatsApp)
+  // Abre a conversa direto no WhatsApp do Chrome (web.whatsapp.com), sempre na mesma
+  // aba/janela "whatsapp_bpms"; quem aperta Enter/Enviar é você.
+  let whats = [], avisos = {}, tarefaWhats = null;
+  const fmtCel = (c) => c.replace(/^55(\d\d)(\d+)(\d{4})$/, "($1) $2-$3");
+  const urlWhats = (w) => `https://web.whatsapp.com/send?phone=${encodeURIComponent(w.celular)}&text=${encodeURIComponent(w.texto)}`;
+  const fila = () => whats.filter((w) => w.celular && !avisos[w.consultor]);
+  function desenharWhats() {
+    $("#card-whats").classList.toggle("oculto", !whats.length);
+    const f = fila(), comCel = whats.filter((w) => w.celular).length, feitos = whats.filter((w) => avisos[w.consultor]).length;
+    $("#btn-whats-proximo").disabled = !f.length;
+    $("#btn-whats-proximo").textContent = f.length ? `▶ Próximo consultor: ${f[0].nome}` : "✓ Fila concluída";
+    $("#whats-progresso").textContent = `${feitos} de ${comCel} avisado(s)` + (whats.length > comCel ? ` · ${whats.length - comCel} sem celular` : "");
+    $("#corpo-whats").innerHTML = whats.map((w, i) => `<tr class="${avisos[w.consultor] ? "vazia" : ""}">
+      <td><b>${esc(w.nome)}</b></td><td class="centro">${w.total}</td>
+      <td>${w.celular ? esc(fmtCel(w.celular)) : '<span class="etiqueta falhou">sem celular</span>'}</td>
+      <td><details><summary style="cursor:pointer">ver texto</summary><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0">${esc(w.texto)}</pre></details></td>
+      <td>${avisos[w.consultor] ? `<span class="etiqueta enviada">✓ aberto ${esc(avisos[w.consultor])}</span>` : ""}</td>
+      <td style="white-space:nowrap">${w.celular ? `<button class="btn secundario pequeno" type="button" data-w="${i}">${avisos[w.consultor] ? "Abrir de novo" : "Abrir"}</button>` : ""}
+        <button class="btn secundario pequeno" type="button" data-copiar="${i}">Copiar texto</button></td></tr>`).join("");
+  }
+  async function abrirWhats(w) {
+    window.open(urlWhats(w), "whatsapp_bpms");
+    try {
+      const r = await post("/api/conferencia/whatsapp-avisado", { tarefa: tarefaWhats, consultor: w.consultor, celular: w.celular });
+      avisos[w.consultor] = r.quando;
+    } catch (e) { avisos[w.consultor] = "agora"; }
+    desenharWhats();
+  }
+  $("#btn-whats-proximo").onclick = () => { const f = fila(); if (f.length) abrirWhats(f[0]); };
+  $("#corpo-whats").addEventListener("click", async (e) => {
+    const a = e.target.closest("[data-w]");
+    if (a) { abrirWhats(whats[+a.dataset.w]); return; }
+    const c = e.target.closest("[data-copiar]");
+    if (c) {
+      try { await navigator.clipboard.writeText(whats[+c.dataset.copiar].texto); toast("Texto copiado.", "ok"); }
+      catch { toast("Não consegui copiar; abra 'ver texto' e copie à mão.", "erro"); }
+    }
+  });
+  async function carregarContatos() {
+    try {
+      const r = await get("/api/conferencia/contatos");
+      $("#corpo-contatos").innerHTML = r.contatos.map((c) => `<tr data-c="${esc(c.consultor)}">
+        <td>${esc(c.consultor)}</td><td><input data-campo="nome" value="${esc(c.nome)}"></td>
+        <td><input data-campo="celular" inputmode="tel" placeholder="(67) 99999-9999" value="${esc(c.celular ? c.celular.replace(/^55(\d\d)(\d+)(\d{4})$/, "($1) $2-$3") : "")}"></td></tr>`).join("");
+    } catch (e) { toast(e.message, "erro"); }
+  }
+  $("#det-contatos").addEventListener("toggle", (e) => { if (e.target.open) carregarContatos(); });
+  $("#btn-salvar-contatos").onclick = async () => {
+    const contatos = [...document.querySelectorAll("#corpo-contatos tr")].map((tr) => ({
+      consultor: tr.dataset.c, nome: tr.querySelector('[data-campo="nome"]').value, celular: tr.querySelector('[data-campo="celular"]').value }));
+    try {
+      const r = await post("/api/conferencia/contatos", { contatos });
+      toast(`${r.gravados} celular(es) salvo(s).`, "ok");
+      // atualiza os celulares da última conferência sem precisar rodar de novo
+      const mapa = Object.fromEntries(contatos.map((c) => [c.consultor, c]));
+      const g = await get("/api/conferencia/contatos");
+      const cel = Object.fromEntries(g.contatos.map((c) => [c.consultor, c.celular]));
+      whats.forEach((w) => { if (mapa[w.consultor]) w.celular = cel[w.consultor] || ""; });
+      desenharWhats();
+    } catch (e) { toast(e.message, "erro"); }
+  };
+
   // ---------------- PDF do relatório (depois que a conferência termina)
   let ultimaConferencia = null;
   const aoTerminar = (t) => {
@@ -91,6 +185,10 @@
     ultimaConferencia = temHtml ? t.id : null;
     $("#pdf-linha").classList.toggle("oculto", !temHtml);
     $("#pdf-link").innerHTML = "";
+    if (t && t.tipo === "conferencia" && t.resultado && t.resultado.whatsapp) {
+      whats = t.resultado.whatsapp; tarefaWhats = t.id; avisos = {}; desenharWhats();
+      get(`/api/conferencia/whatsapp-avisos?tarefa=${encodeURIComponent(t.id)}`).then((r) => { avisos = r.avisos || {}; desenharWhats(); }).catch(() => {});
+    }
   };
   $("#btn-pdf").onclick = async () => {
     if (!ultimaConferencia) return;
