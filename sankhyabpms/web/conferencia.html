@@ -84,6 +84,12 @@
     <div class="acoes" style="margin:0 0 10px">
       <button class="btn" id="btn-whats-proximo" type="button">▶ Próximo consultor</button>
       <span class="ajuda" id="whats-progresso" style="color:var(--suave);font-size:13px"></span>
+      <span class="espaco"></span>
+      <label for="whats-modo" style="font-size:13px;color:var(--suave)">Abrir em</label>
+      <select id="whats-modo" style="width:auto">
+        <option value="desktop">WhatsApp Desktop (mesma janela)</option>
+        <option value="chrome" selected>WhatsApp Web no Chrome</option>
+      </select>
     </div>
     <div class="tabela-caixa">
       <table>
@@ -135,8 +141,17 @@
       <td style="white-space:nowrap">${w.celular ? `<button class="btn secundario pequeno" type="button" data-w="${i}">${avisos[w.consultor] ? "Abrir de novo" : "Abrir"}</button>` : ""}
         <button class="btn secundario pequeno" type="button" data-copiar="${i}">Copiar texto</button></td></tr>`).join("");
   }
+  // "desktop": link whatsapp:// abre a conversa no app WhatsApp do Windows, sempre na
+  // mesma janela e sem recarregar. "chrome": web.whatsapp.com, que recarrega a cada envio.
+  const modoWhats = () => $("#whats-modo").value;
+  try { const m = localStorage.getItem("bpms-whats-modo"); if (m) $("#whats-modo").value = m; } catch (e) { /* sem storage */ }
+  $("#whats-modo").onchange = () => { try { localStorage.setItem("bpms-whats-modo", modoWhats()); } catch (e) { /* sem storage */ } };
   async function abrirWhats(w) {
-    window.open(urlWhats(w), "whatsapp_bpms");
+    if (modoWhats() === "desktop") {
+      location.href = `whatsapp://send?phone=${encodeURIComponent(w.celular)}&text=${encodeURIComponent(w.texto)}`;
+    } else {
+      window.open(urlWhats(w), "whatsapp_bpms");
+    }
     try {
       const r = await post("/api/conferencia/whatsapp-avisado", { tarefa: tarefaWhats, consultor: w.consultor, celular: w.celular });
       avisos[w.consultor] = r.quando;

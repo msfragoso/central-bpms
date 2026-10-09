@@ -194,22 +194,24 @@ def _mensagens_whatsapp(mensagens, periodo_texto):
         primeiro = (nome.split() or [nome])[0].title()
         pend = [l for l in m["linhas"] if not l["aguardando_gp"]]
         gp = [l for l in m["linhas"] if l["aguardando_gp"]]
-        partes = [f"Olá, {primeiro}! Tudo bem?",
-                  f"Na conferência de OS ({periodo_texto}, feita em {datetime.now():%d/%m/%Y às %Hh%M}) "
-                  "ficaram estes apontamentos para você verificar, por gentileza:"]
+        # Texto aprovado pelo Fragoso (09/10/2026). O WhatsApp não tem cor: *texto* é
+        # negrito; o vermelho/verde vira 🔴/🟢 na frente.
+        partes = [f"Olá, {primeiro}! Tudo bem?", "",
+                  f"Na conferência no período de *{periodo_texto}, realizada em "
+                  f"{datetime.now():%d/%m/%Y às %Hh%M}*, ficaram estes apontamentos pendentes. "
+                  "Por gentileza, peço que verifique:"]
         if pend:
-            partes.append("")
-            partes.append("*Sem apontamento de OS no Sankhya:*")
+            partes += ["", "*Sem apontamento de OS no Sankhya:*"]
             for l in pend:
-                # ⚠️ em forma de emoji (U+26A0 + U+FE0F); sem o U+FE0F o WhatsApp mostrava "?".
-                atraso = f" ⚠️ {l['dias']} dias" if l["dias"] >= 2 else ""
+                atraso = f" 🔴 *⚠️ {l['dias']} dias*" if l["dias"] >= 2 else " 🔵"  # 🔵 = ainda dentro do prazo (09/10/2026)
                 partes.append(f"• {l['data']} · {l['periodo']} · {l['parceiro']}{atraso}")
         if gp:
-            partes.append("")
-            partes.append("*Aguardando aprovação do GP:*")
+            partes += ["", "🟢 *Aguardando aprovação do GP (somente para informação):*"]
             for l in gp:
                 partes.append(f"• {l['data']} · {l['periodo']} · {l['parceiro']}" + (f" ({l['os']})" if l["os"] else ""))
-        partes += ["", f"Total: {len(m['linhas'])}. Obrigado!"]
+        total = len(m["linhas"])
+        partes += ["", f"Total: {total} tarefa{'s' if total != 1 else ''}.", "",
+                   "Se precisar de apoio, estou à disposição! 👍", "Obrigado!"]
         saida.append({"consultor": m["consultor"], "nome": nome, "celular": contato.get("celular", ""),
                       "total": len(m["linhas"]), "texto": "\n".join(partes)})
     return saida
