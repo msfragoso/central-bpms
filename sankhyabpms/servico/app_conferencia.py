@@ -360,7 +360,8 @@ def whatsapp_avisado(req):
     consultor = str(req.corpo.get("consultor") or "")[:40]
     if not tarefa or not consultor:
         raise ErroUsuario("Faltou a conferência ou o consultor.")
-    quando = datetime.now().strftime("%d/%m/%Y %H:%M")
+    # desfazer=True: tira a marca (ex.: o WhatsApp não abriu); a linha fica no log.
+    quando = None if req.corpo.get("desfazer") else datetime.now().strftime("%d/%m/%Y %H:%M")
     with open(dados_arquivo(ARQ_AVISOS), "a", encoding="utf-8") as f:
         f.write(json.dumps({"tarefa": tarefa, "consultor": consultor, "quando": quando,
                             "celular": str(req.corpo.get("celular") or "")[:20]}, ensure_ascii=False) + "\n")
@@ -380,7 +381,10 @@ def whatsapp_avisos(req):
                 except ValueError:
                     continue
                 if a.get("tarefa") == tarefa:
-                    avisos[a["consultor"]] = a["quando"]
+                    if a.get("quando"):
+                        avisos[a["consultor"]] = a["quando"]
+                    else:
+                        avisos.pop(a["consultor"], None)
     except OSError:
         pass
     return 200, {"avisos": avisos}

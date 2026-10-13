@@ -87,7 +87,7 @@
       <span class="espaco"></span>
       <label for="whats-modo" style="font-size:13px;color:var(--suave)">Abrir em</label>
       <select id="whats-modo" style="width:auto">
-        <option value="desktop">WhatsApp Desktop (mesma janela)</option>
+        <option value="desktop">WhatsApp Desktop (app da Microsoft Store)</option>
         <option value="chrome" selected>WhatsApp Web no Chrome</option>
       </select>
     </div>
@@ -114,7 +114,7 @@
 <script src="assets/comum.js"></script>
 <script>
 (() => {
-  const { $, get, post, esc, toast, confirmar, mascaraData, dataValida, arquivoBase64 } = BPMS;
+  const { $, get, post, esc, toast, confirmar, informar, mascaraData, dataValida, arquivoBase64 } = BPMS;
   BPMS.montarTopo("conferencia");
   const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
   [$("#de"), $("#ate")].forEach(mascaraData);
@@ -137,7 +137,7 @@
       <td><b>${esc(w.nome)}</b></td><td class="centro">${w.total}</td>
       <td>${w.celular ? esc(fmtCel(w.celular)) : '<span class="etiqueta falhou">sem celular</span>'}</td>
       <td><details><summary style="cursor:pointer">ver texto</summary><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0">${esc(w.texto)}</pre></details></td>
-      <td>${avisos[w.consultor] ? `<span class="etiqueta enviada">✓ aberto ${esc(avisos[w.consultor])}</span>` : ""}</td>
+      <td>${avisos[w.consultor] ? `<span class="etiqueta enviada">✓ aberto ${esc(avisos[w.consultor])}</span> <button class="btn secundario pequeno" type="button" data-desfazer="${i}" title="Voltar para a fila">↺</button>` : ""}</td>
       <td style="white-space:nowrap">${w.celular ? `<button class="btn secundario pequeno" type="button" data-w="${i}">${avisos[w.consultor] ? "Abrir de novo" : "Abrir"}</button>` : ""}
         <button class="btn secundario pequeno" type="button" data-copiar="${i}">Copiar texto</button></td></tr>`).join("");
   }
@@ -146,22 +146,43 @@
   const modoWhats = () => $("#whats-modo").value;
   try { const m = localStorage.getItem("bpms-whats-modo"); if (m) $("#whats-modo").value = m; } catch (e) { /* sem storage */ }
   $("#whats-modo").onchange = () => { try { localStorage.setItem("bpms-whats-modo", modoWhats()); } catch (e) { /* sem storage */ } };
+  async function marcar(w, desfazer) {
+    try {
+      const r = await post("/api/conferencia/whatsapp-avisado", { tarefa: tarefaWhats, consultor: w.consultor, celular: w.celular, desfazer: !!desfazer });
+      if (desfazer) delete avisos[w.consultor]; else avisos[w.consultor] = r.quando;
+    } catch (e) { if (desfazer) delete avisos[w.consultor]; else avisos[w.consultor] = "agora"; }
+    desenharWhats();
+  }
+  // No modo Desktop o navegador não avisa se o link whatsapp:// abriu. Quando o app
+  // abre, a página perde o foco; se em 2,5 s isso não acontecer, o app não está
+  // instalado/associado: avisa e não marca o consultor.
+  function abrirDesktop(w) {
+    return new Promise((ok) => {
+      let saiu = false;
+      const aoSair = () => { saiu = true; };
+      window.addEventListener("blur", aoSair, { once: true });
+      document.addEventListener("visibilitychange", aoSair, { once: true });
+      location.href = `whatsapp://send?phone=${encodeURIComponent(w.celular)}&text=${encodeURIComponent(w.texto)}`;
+      setTimeout(() => { window.removeEventListener("blur", aoSair); document.removeEventListener("visibilitychange", aoSair); ok(saiu); }, 2500);
+    });
+  }
   async function abrirWhats(w) {
     if (modoWhats() === "desktop") {
-      location.href = `whatsapp://send?phone=${encodeURIComponent(w.celular)}&text=${encodeURIComponent(w.texto)}`;
+      if (!(await abrirDesktop(w))) {
+        return informar("O WhatsApp Desktop não abriu",
+          `O Windows não encontrou o aplicativo WhatsApp para abrir o link. Instale o <b>WhatsApp</b> pela <b>Microsoft Store</b> (grátis) e conecte pelo QR code, ou troque "Abrir em" para <b>WhatsApp Web no Chrome</b>.<br><br>${esc(w.nome)} continua na fila.`);
+      }
     } else {
       window.open(urlWhats(w), "whatsapp_bpms");
     }
-    try {
-      const r = await post("/api/conferencia/whatsapp-avisado", { tarefa: tarefaWhats, consultor: w.consultor, celular: w.celular });
-      avisos[w.consultor] = r.quando;
-    } catch (e) { avisos[w.consultor] = "agora"; }
-    desenharWhats();
+    marcar(w, false);
   }
   $("#btn-whats-proximo").onclick = () => { const f = fila(); if (f.length) abrirWhats(f[0]); };
   $("#corpo-whats").addEventListener("click", async (e) => {
     const a = e.target.closest("[data-w]");
     if (a) { abrirWhats(whats[+a.dataset.w]); return; }
+    const d = e.target.closest("[data-desfazer]");
+    if (d) { marcar(whats[+d.dataset.desfazer], true); return; }
     const c = e.target.closest("[data-copiar]");
     if (c) {
       try { await navigator.clipboard.writeText(whats[+c.dataset.copiar].texto); toast("Texto copiado.", "ok"); }

@@ -38,7 +38,7 @@ def _linha(r):
     else:
         situacao = "VAZIA"
     def os_(o):
-        return {"num": o.get("numos_sankhya"), "data": o.get("date_done"), "realizado": o.get("diff_time"),
+        return {"id": o.get("id"), "num": o.get("numos_sankhya"), "data": o.get("date_done"), "realizado": o.get("diff_time"),
                 "processo": o.get("process_names"), "ok": o.get("_realizado_ok", True),
                 "executante": o.get("_executante") or ""}
     return {
@@ -115,31 +115,33 @@ def conferir(req):
 
 @rota("POST", "/api/aceite/enviar")
 def enviar(req):
+    """Um aceite por OS (09/10/2026): itens = [{"fap": "27956", "os": <id da OS no Experience>}, ...]."""
     exigir_confirmacao(req)
-    faps = [str(f) for f in (req.corpo.get("faps") or [])]
-    if not faps:
-        raise ErroUsuario("Nenhuma FAP marcada.")
+    itens = req.corpo.get("itens") or []
+    if not itens:
+        raise ErroUsuario("Nenhuma OS marcada.")
     selecionadas = []
-    for f in faps:
+    for it in itens:
+        f, oid = str(it.get("fap") or ""), str(it.get("os") or "")
         r = ESTADO["resultados"].get(f)
         if not r:
             raise ErroUsuario(f"A FAP {f} não está na última conferência. Clique em Conferir de novo.")
-        if r["bloqueios"] or not r["os"]:
-            raise ErroUsuario(f"A FAP {f} não está pronta para envio.")
-        selecionadas.append(r)
+        if r["bloqueios"] or not any(str(o["id"]) == oid for o in r["os"]):
+            raise ErroUsuario(f"A OS {oid} da FAP {f} não está pronta para envio.")
+        selecionadas.append((r, oid))
 
     def trabalho(t):
         core = _core()
         token = _login(core, t)
         ok_total, situacao = 0, {}
-        for r in selecionadas:
-            ok, msg = core.enviar_fap(token, r)
+        for r, oid in selecionadas:
+            ok, msg = core.enviar_os(token, r, oid)
             t.log(msg)
-            situacao[r["fap"]] = "ENVIADA" if ok else "FALHOU"
+            situacao[f"{r['fap']}|{oid}"] = "ENVIADA" if ok else "FALHOU"
             ok_total += ok
         t.adicionar_arquivo("Registro de envios (.jsonl)", core.ARQ_LOG_ENVIOS)
         marcar_uso("aceite")
-        return {"mensagem": f"Envio concluído: {ok_total} de {len(selecionadas)} aceite(s) enviado(s).",
+        return {"mensagem": f"Envio concluído: {ok_total} de {len(selecionadas)} aceite(s) de OS enviado(s).",
                 "resultado": {"situacao": situacao}}
 
     t = GERENTE.iniciar("aceite_enviar", "Aceite de OS - envio", trabalho, pasta=PASTAS["aceite"])

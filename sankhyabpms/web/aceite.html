@@ -17,7 +17,7 @@
   <div class="cabecalho">
     <div>
       <h1 data-texto="aceite.titulo">Aceite de OS</h1>
-      <p data-texto="aceite.subtitulo">Um aceite por FAP com todas as OS do período · o e-mail sai do Experience para os aprovadores</p>
+      <p data-texto="aceite.subtitulo">Um aceite por OS, com as horas de cada OS · o e-mail sai do Experience para os aprovadores</p>
     </div>
     <span class="ultimo-uso" data-ultimo-uso="aceite"></span>
   </div>
@@ -67,43 +67,46 @@
   const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
   [$("#de"), $("#ate")].forEach(mascaraData);
 
+  // Um aceite por OS (09/10/2026): cada OS é uma linha, com as horas dela (sem somar a FAP).
   let linhas = [], marcadas = new Set(), situacaoEnvio = {}, ocupado = false;
   const estadoOrdem = ordenavel($("#tabela"), desenhar);
-  // Uma linha por OS dentro da célula, para Nº OS, data e executante ficarem alinhados.
-  const porOS = (r, campo) => r.os.map((o) => esc(campo(o) || "-")).join("<br>");
-  const primeiraData = (r) => Math.min(...r.os.map((o) => { const d = BPMS.dataValida(o.data); return d ? d.getTime() : Infinity; }));
   const minutos = (h) => { const m = /^(\d+):(\d+)/.exec(h || ""); return m ? +m[1] * 60 + +m[2] : -1; };
+  const dataNum = (s) => { const d = BPMS.dataValida(s); return d ? d.getTime() : 0; };
+  const chaveOS = (r, o) => `${r.fap}|${o.id}`;
+  // linhas da tabela: uma por OS; FAP bloqueada sem OS ainda aparece numa linha só
+  const itens = () => linhas.flatMap((r) => r.os.length ? r.os.map((o) => ({ r, o, k: chaveOS(r, o) })) : [{ r, o: null, k: `${r.fap}|` }]);
 
   function desenhar() {
     const { chave, desc } = estadoOrdem();
-    const lista = linhas.slice().sort((a, b) => {
-      const c = !chave ? comparar(+a.fap || 0, +b.fap || 0)
-        : chave === "fap" ? comparar(+a.fap || 0, +b.fap || 0)
-        : chave === "horas" ? comparar(minutos(a.horas), minutos(b.horas))
-        : chave === "data" ? comparar(primeiraData(a), primeiraData(b))
-        : chave === "executante" ? comparar(a.os.map((o) => o.executante).join(", "), b.os.map((o) => o.executante).join(", "))
-        : comparar(a[chave], b[chave]);
+    const lista = itens().sort((a, b) => {
+      const c = !chave ? (comparar(+a.r.fap || 0, +b.r.fap || 0) || comparar(dataNum(a.o?.data), dataNum(b.o?.data)))
+        : chave === "fap" ? comparar(+a.r.fap || 0, +b.r.fap || 0)
+        : chave === "horas" ? comparar(minutos(a.o?.realizado), minutos(b.o?.realizado))
+        : chave === "data" ? comparar(dataNum(a.o?.data), dataNum(b.o?.data))
+        : chave === "executante" ? comparar(a.o?.executante || "", b.o?.executante || "")
+        : comparar(a.r[chave], b.r[chave]);
       return desc ? -c : c;
     });
     const corpo = $("#corpo");
     if (!lista.length) {
       corpo.innerHTML = `<tr><td colspan="9" class="vazio-tabela">Nenhuma FAP com OS no período.</td></tr>`;
     } else {
-      corpo.innerHTML = lista.map((r) => {
-        const pronta = r.situacao === "PRONTA";
-        const env = situacaoEnvio[r.fap];
+      corpo.innerHTML = lista.map(({ r, o, k }) => {
+        const pronta = r.situacao === "PRONTA" && o;
+        const env = situacaoEnvio[k];
         const sit = env ? `<span class="etiqueta ${env === "ENVIADA" ? "enviada" : "falhou"}">${env}</span>`
           : `<span class="etiqueta ${pronta ? "pronta" : "bloqueada"}">${r.situacao}</span>`;
         return `<tr class="${pronta ? "pronta" : "bloqueada"} clicavel" data-fap="${esc(r.fap)}">
-          <td class="centro">${pronta && !env ? `<input type="checkbox" data-marcar="${esc(r.fap)}" ${marcadas.has(r.fap) ? "checked" : ""} aria-label="Enviar FAP ${esc(r.fap)}">` : ""}</td>
+          <td class="centro">${pronta && !env ? `<input type="checkbox" data-marcar="${esc(k)}" ${marcadas.has(k) ? "checked" : ""} aria-label="Enviar OS ${esc(o.num)}">` : ""}</td>
           <td>${esc(r.fap)}</td><td>${esc(r.parceiro)}</td><td>${sit}</td>
-          <td>${porOS(r, (o) => o.num)}</td><td>${porOS(r, (o) => o.data)}</td><td>${porOS(r, (o) => o.executante)}</td>
-          <td>${esc(r.horas)}</td>
+          <td>${o ? esc(o.num || "-") : "-"}</td><td>${o ? esc(o.data || "-") : "-"}</td><td>${o ? esc(o.executante || "-") : "-"}</td>
+          <td>${o ? esc(o.realizado || "-") + (o.ok ? "" : " ⚠") : "-"}</td>
           <td>${esc(r.aprovadores.map((a) => a.email).join(", "))}</td></tr>`;
       }).join("");
     }
-    const prontas = linhas.filter((r) => r.situacao === "PRONTA").length;
-    $("#contagem").textContent = linhas.length ? `${prontas} pronta(s) · ${linhas.length - prontas} bloqueada(s) · ${marcadas.size} marcada(s)` : "";
+    const todos = itens().filter((i) => i.o);
+    const prontas = todos.filter((i) => i.r.situacao === "PRONTA").length;
+    $("#contagem").textContent = linhas.length ? `${prontas} OS pronta(s) · ${todos.length - prontas} bloqueada(s) · ${marcadas.size} marcada(s)` : "";
     $("#btn-enviar").disabled = ocupado || !marcadas.size;
   }
 
@@ -129,7 +132,7 @@
 
   function travar(sim) { ocupado = sim; $("#btn-conferir").disabled = sim; desenhar(); }
 
-  $("#btn-marcar").onclick = () => { linhas.forEach((r) => { if (r.situacao === "PRONTA" && !situacaoEnvio[r.fap]) marcadas.add(r.fap); }); desenhar(); };
+  $("#btn-marcar").onclick = () => { itens().forEach(({ r, o, k }) => { if (o && r.situacao === "PRONTA" && !situacaoEnvio[k]) marcadas.add(k); }); desenhar(); };
   $("#btn-desmarcar").onclick = () => { marcadas.clear(); desenhar(); };
 
   const aoConferir = (t) => {
@@ -147,15 +150,15 @@
     if (t && t.resultado) { Object.assign(situacaoEnvio, t.resultado.situacao); marcadas.clear(); desenhar(); }
   };
   $("#btn-enviar").onclick = async () => {
-    const sel = linhas.filter((r) => marcadas.has(r.fap));
-    if (!sel.length) return toast("Nenhuma FAP marcada.");
+    const sel = itens().filter((i) => i.o && marcadas.has(i.k));
+    if (!sel.length) return toast("Nenhuma OS marcada.");
     const ok = await confirmar("Confirmar envio",
-      `Gerar e enviar o aceite de <b>${sel.length} FAP(s)</b>?<ul>${sel.map((r) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: ${r.os.length} OS, ${esc(r.horas)} h</li>`).join("")}</ul>`
+      `Gerar e enviar <b>${sel.length} aceite(s)</b>, um por OS?<ul>${sel.map(({ r, o }) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)} h</li>`).join("")}</ul>`
       + `<div class="aviso erro">O e-mail sai direto do Experience para os aprovadores e não tem como desfazer.</div>`,
       { botao: "Enviar aceites", perigo: true });
     if (!ok) return;
     travar(true);
-    BPMS.iniciar("/api/aceite/enviar", { faps: sel.map((r) => r.fap), confirmar: true }, el, aoEnviar);
+    BPMS.iniciar("/api/aceite/enviar", { itens: sel.map(({ r, o }) => ({ fap: r.fap, os: o.id })), confirmar: true }, el, aoEnviar);
   };
 
   (async () => {
