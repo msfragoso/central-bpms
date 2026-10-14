@@ -93,20 +93,25 @@
     } else {
       corpo.innerHTML = lista.map(({ r, o, k }) => {
         const pronta = r.situacao === "PRONTA" && o;
+        const verificar = pronta && o.alertas && o.alertas.length;  // regras de 13/10/2026: só sinaliza
         const env = situacaoEnvio[k];
         const sit = env ? `<span class="etiqueta ${env === "ENVIADA" ? "enviada" : "falhou"}">${env}</span>`
+          : verificar ? `<span class="etiqueta verificar" title="${esc(o.alertas.join(" · "))}">VERIFICAR</span>`
           : `<span class="etiqueta ${pronta ? "pronta" : "bloqueada"}">${r.situacao}</span>`;
-        return `<tr class="${pronta ? "pronta" : "bloqueada"} clicavel" data-fap="${esc(r.fap)}">
+        return `<tr class="${verificar ? "verificar" : pronta ? "pronta" : "bloqueada"} clicavel" data-fap="${esc(r.fap)}">
           <td class="centro">${pronta && !env ? `<input type="checkbox" data-marcar="${esc(k)}" ${marcadas.has(k) ? "checked" : ""} aria-label="Enviar OS ${esc(o.num)}">` : ""}</td>
           <td>${esc(r.fap)}</td><td>${esc(r.parceiro)}</td><td>${sit}</td>
           <td>${o ? esc(o.num || "-") : "-"}</td><td>${o ? esc(o.data || "-") : "-"}</td><td>${o ? esc(o.executante || "-") : "-"}</td>
-          <td>${o ? esc(o.realizado || "-") + (o.ok ? "" : " ⚠") : "-"}</td>
+          <td>${o ? esc(o.realizado || "-") + (o.ok ? "" : " ⚠")
+            + (o.inicio ? `<br><span style="font-size:11px;color:var(--suave);white-space:nowrap">${esc(o.inicio)}–${esc(o.fim)} · int. ${esc(o.intervalo || "00:00")}</span>` : "")
+            + (o.alertas && o.alertas.length ? `<br><span style="font-size:11px;color:var(--aviso);font-weight:600">${o.alertas.map(esc).join("<br>")}</span>` : "") : "-"}</td>
           <td>${esc(r.aprovadores.map((a) => a.email).join(", "))}</td></tr>`;
       }).join("");
     }
     const todos = itens().filter((i) => i.o);
     const prontas = todos.filter((i) => i.r.situacao === "PRONTA").length;
-    $("#contagem").textContent = linhas.length ? `${prontas} OS pronta(s) · ${todos.length - prontas} bloqueada(s) · ${marcadas.size} marcada(s)` : "";
+    const verif = todos.filter((i) => i.r.situacao === "PRONTA" && i.o.alertas && i.o.alertas.length).length;
+    $("#contagem").textContent = linhas.length ? `${prontas} OS pronta(s)${verif ? ` (${verif} para verificar)` : ""} · ${todos.length - prontas} bloqueada(s) · ${marcadas.size} marcada(s)` : "";
     $("#btn-enviar").disabled = ocupado || !marcadas.size;
   }
 
@@ -153,7 +158,7 @@
     const sel = itens().filter((i) => i.o && marcadas.has(i.k));
     if (!sel.length) return toast("Nenhuma OS marcada.");
     const ok = await confirmar("Confirmar envio",
-      `Gerar e enviar <b>${sel.length} aceite(s)</b>, um por OS?<ul>${sel.map(({ r, o }) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)} h</li>`).join("")}</ul>`
+      `Gerar e enviar <b>${sel.length} aceite(s)</b>, um por OS?<ul>${sel.map(({ r, o }) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)} h${o.alertas && o.alertas.length ? ` <b style="color:var(--aviso)">VERIFICAR: ${esc(o.alertas.join("; "))}</b>` : ""}</li>`).join("")}</ul>`
       + `<div class="aviso erro">O e-mail sai direto do Experience para os aprovadores e não tem como desfazer.</div>`,
       { botao: "Enviar aceites", perigo: true });
     if (!ok) return;

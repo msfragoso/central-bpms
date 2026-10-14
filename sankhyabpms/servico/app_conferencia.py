@@ -129,6 +129,91 @@ def _tag_id_do_experience(t, om_df, ini, fim, caminho_cu=None):
     return om_df
 
 
+def _travadas_do_experience(t, om_df, ini, fim, caminho_cu=None):
+    """
+    Pedido do Fragoso (14/10/2026): depois da busca no OM, cruza também os
+    apontamentos TRAVADOS no Experience (lançados, mas sem OS gerada: "Pendente de
+    Liberação pelo GP"). O OM não mostra essas OS, então sem isso elas viravam
+    "Sem apontamento no Sankhya". Aqui elas entram na base com o mesmo formato da
+    origem Experience (Núm. OS = "Pendente de Liberação pelo GP (Cód: id)") e o
+    cruzamento já trata como "Aguardando aprovação do GP". Só leitura.
+    """
+    import re as _re
+    import time
+    import pandas as pd
+    import experience_api as exp
+    from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
+    from experience_api.orders import search_orders, get_order_tasks, extrair_solucao
+    from experience_api.clickup_tags import extrair_tag_clickup
+    from clickup_sync.config import PARCEIRO_FAP
+    from dados_conferencia import eh_pessoa_excluida_sankhya
+
+    t.log("Travadas: buscando no Experience os apontamentos travados (sem OS) do período (só leitura)...")
+    token = exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
+    if not token:
+        t.log("⚠ Travadas: falha no login do Experience. Seguindo só com o OM.")
+        return om_df
+    faps = {str(f).replace(".0", "") for f in om_df["Número Unico FAP"].dropna()}
+    for v in PARCEIRO_FAP.values():
+        faps.update(str(f) for f in (v if isinstance(v, list) else [v]))
+    if caminho_cu:
+        try:
+            cu = pd.read_csv(caminho_cu)
+            for col in ("List", "Parceiro (drop down)"):
+                for val in cu.get(col, pd.Series(dtype=str)).dropna().unique():
+                    m = _re.search(r"\b(\d{4,6})\b", str(val))
+                    if m:
+                        faps.add(m.group(1))
+        except Exception:
+            pass
+    impl_fap = {}
+    for fap in sorted(faps):
+        try:
+            impl = exp.find_implantation_by_fap(token, fap)
+            if impl:
+                impl_fap[impl["id"]] = fap
+        except Exception:
+            continue
+    if not impl_fap:
+        return om_df
+    try:
+        travadas = search_orders(token, list(impl_fap), ini.isoformat(), fim.isoformat(), integrated="") or []
+    except Exception as e:
+        t.log(f"⚠ Travadas: falha na busca ({e}). Seguindo só com o OM.")
+        return om_df
+    nums_om = set(om_df["Núm. OS"].astype(str).str.replace(".0", "", regex=False))
+    linhas = []
+    for o in travadas:
+        if o.get("numos_sankhya") and str(o["numos_sankhya"]) in nums_om:
+            continue  # já virou OS e está no OM
+        if eh_pessoa_excluida_sankhya(o.get("person_name")):
+            continue
+        oid = o.get("id") or o.get("order_id")
+        tarefas = get_order_tasks(token, oid) or []
+        st = tarefas[0] if tarefas else {}
+        info = st.get("additional_information")
+        linhas.append({
+            "Dt execução": st.get("date_done") or o.get("order_done_date") or o.get("date_done"),
+            "Núm. OS": f"Pendente de Liberação pelo GP (Cód: {oid})",
+            "Sub-OS": 1, "Nome (Executante)": o.get("person_name"),
+            "Número Unico FAP": impl_fap.get(o.get("implantation_id")) or o.get("fap"),
+            "Nome Parceiro (Parceiro)": o.get("company_name"), "Cód. Parceiro": None,
+            "Tempo gasto": st.get("worked_hours") or o.get("diff_time"),
+            "Hora Inicial": st.get("hour_to_start") or "00:00", "Hora Final": st.get("hour_to_finish") or "00:00",
+            "Intervalo": st.get("hour_to_lunch") or "00:00", "Nro.único do pedido": o.get("application_code"),
+            "Solução": extrair_solucao(info) if info else "", "Tag ClickUp": extrair_tag_clickup(info) if info else None,
+        })
+        time.sleep(0.1)
+    t.log(f"Travadas: {len(linhas)} apontamento(s) travado(s) no Experience entram no cruzamento "
+          "como \"Aguardando aprovação do GP\".")
+    if not linhas:
+        return om_df
+    novo = pd.DataFrame(linhas)
+    if "Dt execução" in om_df.columns and pd.api.types.is_datetime64_any_dtype(om_df["Dt execução"]):
+        novo["Dt execução"] = pd.to_datetime(novo["Dt execução"], format="%d/%m/%Y", errors="coerce")
+    return pd.concat([om_df, novo], ignore_index=True)
+
+
 # ============================================================================
 # WHATSAPP DOS CONSULTORES (08/10/2026, opção 1: link wa.me, envio pelo usuário)
 # ============================================================================
@@ -210,8 +295,14 @@ def _mensagens_whatsapp(mensagens, periodo_texto):
             for l in gp:
                 partes.append(f"• {l['data']} · {l['periodo']} · {l['parceiro']}" + (f" ({l['os']})" if l["os"] else ""))
         total = len(m["linhas"])
+        # Links das tarefas do ClickUp no fim (pedido do Fragoso, 13/10/2026).
         partes += ["", f"Total: {total} tarefa{'s' if total != 1 else ''}.", "",
                    "Se precisar de apoio, estou à disposição! 👍", "Obrigado!"]
+        links = [l for l in m["linhas"] if l.get("task_id") and not l["aguardando_gp"]]  # sem link para as que aguardam o GP (13/10/2026)
+        if links:
+            partes += ["", "🔗 *Tarefas no ClickUp:*"]
+            for l in links:
+                partes.append(f"• {l['data']} · {l['parceiro']}: app.clickup.com/t/{l['task_id']}")  # sem https:// (mais curto; o WhatsApp ainda vira link)
         saida.append({"consultor": m["consultor"], "nome": nome, "celular": contato.get("celular", ""),
                       "total": len(m["linhas"]), "texto": "\n".join(partes)})
     return saida
@@ -262,6 +353,7 @@ def executar(req):
                 sankhya_df, _ = app_om.buscar_os(ini, fim, t.log)
                 if usar_tag_id:
                     sankhya_df = _tag_id_do_experience(t, sankhya_df, ini, fim, caminho_cu)
+                sankhya_df = _travadas_do_experience(t, sankhya_df, ini, fim, caminho_cu)
                 copia = os.path.join(PASTA_CLICKUP, f"OS_SankhyaOM_{ini:%Y%m%d}_a_{fim:%Y%m%d}_{datetime.now():%H%M%S}.xlsx")
                 sankhya_df.to_excel(copia, index=False)
                 t.adicionar_arquivo("OS do Sankhya-OM (.xlsx)", copia)

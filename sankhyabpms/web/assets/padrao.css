@@ -139,6 +139,8 @@ th[data-ordem]::after { content: " ↕"; opacity: .35; }
 th.asc::after { content: " ▲"; opacity: 1; } th.desc::after { content: " ▼"; opacity: 1; }
 tr.pronta td { background: var(--local-claro); }
 tr.bloqueada td { background: var(--perigo-claro); }
+tr.verificar td { background: var(--aviso-claro); }
+.etiqueta.verificar { background: var(--aviso); color: var(--card); }
 tr.vazia td { color: var(--suave); }
 tr.clicavel { cursor: pointer; }
 td.centro, th.centro { text-align: center; }

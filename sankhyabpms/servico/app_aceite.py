@@ -40,7 +40,9 @@ def _linha(r):
     def os_(o):
         return {"id": o.get("id"), "num": o.get("numos_sankhya"), "data": o.get("date_done"), "realizado": o.get("diff_time"),
                 "processo": o.get("process_names"), "ok": o.get("_realizado_ok", True),
-                "executante": o.get("_executante") or ""}
+                "executante": o.get("_executante") or "", "inicio": o.get("_inicio") or "",
+                "fim": o.get("_fim") or "", "intervalo": o.get("_intervalo") or "",
+                "alertas": o.get("_alertas") or []}
     return {
         "fap": r["fap"], "parceiro": r["parceiro"], "situacao": situacao,
         "num_os": [o.get("numos_sankhya") for o in r["os"]], "horas": r["total_horas"] if r["os"] else "",
@@ -78,6 +80,47 @@ def _preencher_executantes(token, resultados, periodo, log):
             o["_executante"] = nomes.get(str(o.get("numos_sankhya") or ""), "")
 
 
+def _min(hhmm):
+    try:
+        h, m = str(hhmm or "").strip().split(":")[:2]
+        return int(h) * 60 + int(m)
+    except (ValueError, TypeError):
+        return None
+
+
+def _conferir_horarios(token, resultados, log):
+    """
+    Regras de VERIFICAR (pedido do Fragoso, 13/10/2026), só sinalizam, não bloqueiam:
+      - mais de 8h realizadas sem intervalo lançado;
+      - horas realizadas quebradas: fora de :00 / :30 (ex.: 15:45, 15:01, 16:03).
+    O horário de início/fim/intervalo vem das tarefas da OS (get_order_tasks, só leitura).
+    """
+    from experience_api.orders import get_order_tasks
+    todas = [o for r in resultados for o in r["os"]]
+    for i, o in enumerate(todas, 1):
+        alertas = []
+        try:
+            tarefas = get_order_tasks(token, o["id"]) or []
+        except Exception as e:  # informativo: nunca derruba a conferência
+            log(f"  Aviso: não consegui ler os horários da OS {o.get('numos_sankhya')} ({e}).")
+            tarefas = []
+        inicio = min((x.get("hour_to_start") for x in tarefas if x.get("hour_to_start")), default="")
+        fim = max((x.get("hour_to_finish") for x in tarefas if x.get("hour_to_finish")), default="")
+        intervalos = [_min(x.get("hour_to_lunch")) or 0 for x in tarefas]
+        intervalo = sum(intervalos)
+        realizado = _min(o.get("diff_time"))
+        o["_inicio"], o["_fim"] = inicio, fim
+        o["_intervalo"] = f"{intervalo // 60:02d}:{intervalo % 60:02d}" if tarefas else ""
+        if realizado is not None and realizado > 8 * 60 and tarefas and intervalo == 0:
+            alertas.append(f"{o.get('diff_time')} h sem intervalo lançado")
+        # 13/10/2026: horas quebradas só olham o REALIZADO (início/fim/intervalo não).
+        if realizado is not None and realizado % 30:
+            alertas.append(f"horas realizadas quebradas: {o.get('diff_time')}")
+        o["_alertas"] = alertas
+        if i % 10 == 0:
+            log(f"  horários conferidos: {i}/{len(todas)}")
+
+
 @rota("GET", "/api/aceite/opcoes")
 def opcoes(req):
     segunda = date.today() - timedelta(days=date.today().weekday())
@@ -98,6 +141,9 @@ def conferir(req):
         res = core.conferir_todas(token, faps, periodo, t.log)
         t.log("Buscando os executantes das OS (só leitura)...")
         _preencher_executantes(token, res, periodo, t.log)
+        t.log("Conferindo início, fim e intervalo de cada OS (só leitura)...")
+        _conferir_horarios(token, res, t.log)
+        verificar = sum(1 for r in res for o in r["os"] if o.get("_alertas"))
         ESTADO["resultados"] = {r["fap"]: r for r in res}
         t.adicionar_arquivo("Prévia (.csv)", core.salvar_csv(res))
         prontas = sum(1 for r in res if r["os"] and not r["bloqueios"])
@@ -105,7 +151,7 @@ def conferir(req):
         vazias = sum(1 for r in res if not r["os"] and not r["bloqueios"])
         marcar_uso("aceite")
         return {"mensagem": f"Conferência concluída: {prontas} pronta(s), {bloq} bloqueada(s), "
-                            f"{vazias} FAP(s) sem OS no período (ocultas). Nada foi enviado.",
+                            f"{vazias} FAP(s) sem OS no período (ocultas), {verificar} OS para VERIFICAR. Nada foi enviado.",
                 "resultado": {"linhas": [_linha(r) for r in res if r["os"] or r["bloqueios"]]}}
 
     t = GERENTE.iniciar("aceite_conferir", "Aceite de OS - conferência (só leitura)", trabalho,
