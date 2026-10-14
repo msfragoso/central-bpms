@@ -10,6 +10,7 @@ const BPMS = (() => {
     { id: "fase3", href: "fase3.html", rotulo: "Apontamentos travados" },
     { id: "aceite", href: "aceite.html", rotulo: "Aceite de OS" },
     { id: "agenda", href: "agenda.html", rotulo: "Agenda semanal" },
+    { id: "atendimentos", href: "atendimentos.html", rotulo: "Atendimentos WhatsApp" },
   ];
 
   // ------------------------------------------------------------ util

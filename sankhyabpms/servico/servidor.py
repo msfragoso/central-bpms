@@ -34,6 +34,7 @@ import app_aceite  # noqa: E402,F401
 import app_sync  # noqa: E402,F401
 import app_om  # noqa: E402,F401
 import app_agenda  # noqa: E402,F401
+import app_atendimentos  # noqa: E402,F401
 
 PORTA = int(CONFIG.get("porta") or 8766)
 HOSTS_OK = {f"127.0.0.1:{PORTA}", f"localhost:{PORTA}"}

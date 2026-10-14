@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atendimentos WhatsApp</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="atend.titulo">Atendimentos WhatsApp</h1>
+      <p data-texto="atend.subtitulo">Relatório mensal do Total Chat · compara dois meses · apresentação em PDF (4 slides, paisagem)</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="atendimentos"></span>
+  </div>
+
+  <div class="grade duas">
+    <section class="card faixa">
+      <h2>1. CSVs do Total Chat</h2>
+      <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px" data-texto="atend.csv.ajuda">Exporte o mês no Total Chat e envie o .csv aqui. O mês é identificado pelas datas de início dos atendimentos; se houver dois arquivos do mesmo mês, vale o maior.</p>
+      <div class="campos">
+        <div class="campo"><label for="arquivo">Enviar CSV</label><input type="file" id="arquivo" accept=".csv" multiple></div>
+      </div>
+      <div class="tabela-caixa" style="margin-top:10px">
+        <table>
+          <thead><tr><th>Mês</th><th>Arquivo</th><th class="centro">Atendimentos</th></tr></thead>
+          <tbody id="corpo-meses"><tr><td colspan="3" class="vazio-tabela">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+      <span class="ajuda" id="pasta" style="font-size:12px;color:var(--suave)"></span>
+    </section>
+
+    <section class="card faixa">
+      <h2>2. Gerar a apresentação</h2>
+      <div class="campos">
+        <div class="campo c6"><label for="anterior">Mês anterior</label><select id="anterior"></select></div>
+        <div class="campo c6"><label for="atual">Mês atual</label><select id="atual"></select></div>
+        <div class="campo">
+          <label for="excluir">Fora do ranking de clientes <span class="ajuda">(prefixos separados por vírgula)</span></label>
+          <input id="excluir" value="PMO">
+          <span class="ajuda">Os KPIs usam todos os atendimentos; só o ranking de clientes ignora esses contatos.</span>
+        </div>
+      </div>
+      <div class="acoes"><button class="btn" id="btn-gerar" type="button">📄 Gerar PDF</button></div>
+      <pre class="log" id="log" style="margin-top:12px"></pre>
+      <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+      <div class="arquivos" id="arquivos"></div>
+    </section>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, esc, toast, arquivoBase64 } = BPMS;
+  BPMS.montarTopo("atendimentos");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  let meses = [];
+
+  async function carregar() {
+    try {
+      const r = await get("/api/atendimentos/opcoes");
+      meses = r.meses;
+      $("#pasta").textContent = `Pasta: ${r.pasta}`;
+      $("#corpo-meses").innerHTML = meses.length
+        ? meses.slice().reverse().map((m) => `<tr><td><b>${esc(m.rotulo)}</b></td><td>${esc(m.arquivo)}</td><td class="centro">${m.linhas}</td></tr>`).join("")
+        : `<tr><td colspan="3" class="vazio-tabela">Nenhum CSV ainda. Envie pelo menos dois meses.</td></tr>`;
+      const opcoes = meses.map((m) => `<option value="${esc(m.mes)}">${esc(m.rotulo)}</option>`).join("");
+      $("#anterior").innerHTML = opcoes; $("#atual").innerHTML = opcoes;
+      if (meses.length >= 2) { $("#anterior").value = meses[meses.length - 2].mes; $("#atual").value = meses[meses.length - 1].mes; }
+      $("#btn-gerar").disabled = meses.length < 2;
+    } catch (e) { toast(e.message, "erro"); }
+  }
+
+  $("#arquivo").onchange = async (e) => {
+    for (const f of e.target.files) {
+      try {
+        const r = await post("/api/atendimentos/enviar-csv", { nome: f.name, conteudo_b64: await arquivoBase64(f) });
+        toast(`${r.arquivo}: ${r.rotulo}, ${r.linhas} atendimentos.`, "ok");
+      } catch (err) { toast(`${f.name}: ${err.message}`, "erro"); }
+    }
+    e.target.value = "";
+    carregar();
+  };
+
+  const travar = (sim) => { $("#btn-gerar").disabled = sim || meses.length < 2; };
+  $("#btn-gerar").onclick = () => {
+    if ($("#anterior").value >= $("#atual").value) return toast("O mês anterior precisa ser antes do mês atual.", "erro");
+    travar(true);
+    BPMS.iniciar("/api/atendimentos/gerar", { anterior: $("#anterior").value, atual: $("#atual").value, excluir: $("#excluir").value }, el, () => travar(false));
+  };
+
+  carregar().then(() => BPMS.retomar(["atendimentos"], el, () => travar(false), () => travar(true)));
+})();
+</script>
+</body>
+</html>
