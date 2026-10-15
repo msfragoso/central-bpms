@@ -32,6 +32,11 @@
           <span class="ajuda">Não precisa ser exato. Em branco roda <b>todas as listas</b> (use o filtro de modelo para restringir).</span>
           <span class="ajuda" id="contagem"></span>
         </div>
+        <div class="campo">
+          <label for="consultor">Consultor <span class="ajuda">(opcional)</span></label>
+          <select id="consultor"><option value="">Todos os consultores</option></select>
+          <span class="ajuda" data-texto="sync.consultor.ajuda">Só as tarefas em que ele é o responsável. A caça a órfãos e duplicatas também olha só os lançamentos dele — os dos outros consultores não são tocados.</span>
+        </div>
         <div class="campo c6"><label for="de">Data inicial</label><input id="de"></div>
         <div class="campo c6"><label for="ate">Data final</label><input id="ate"></div>
         <div class="campo"><span class="ajuda">A caça a órfãos e duplicatas olha automaticamente 14 dias para trás da Data inicial.</span></div>
@@ -254,7 +259,8 @@
   };
 
   $("#btn-executar").onclick = async () => {
-    const corpo = { parceiro: $("#parceiro").value.trim(), de: $("#de").value, ate: $("#ate").value, modelo: $("#modelo").value };
+    const corpo = { parceiro: $("#parceiro").value.trim(), de: $("#de").value, ate: $("#ate").value, modelo: $("#modelo").value, consultor: $("#consultor").value };
+    const rotuloConsultor = corpo.consultor ? $("#consultor").selectedOptions[0].textContent : "";
     if (!dataValida(corpo.de)) return toast("Data inicial fora do formato DD/MM/AAAA.", "erro");
     if (!dataValida(corpo.ate)) return toast("Data final fora do formato DD/MM/AAAA.", "erro");
     const rotuloModelo = $("#modelo").selectedOptions[0]?.textContent || "Todos";
@@ -262,9 +268,9 @@
       ? `<br><b>${ultimaContagem.total}</b> lista(s) pelo nome${ultimaContagem.listas.length ? `:<ul>${ultimaContagem.listas.map((l) => `<li>${esc(l)}</li>`).join("")}${ultimaContagem.total > ultimaContagem.listas.length ? "<li>…</li>" : ""}</ul>` : ""}` : "";
     const todas = !corpo.parceiro;
     const ok = await confirmar("Executar a sincronização?",
-      `<b>Parceiro:</b> ${todas ? "<b>TODOS os parceiros</b>" : esc(corpo.parceiro)}<br><b>Período:</b> ${esc(corpo.de)} a ${esc(corpo.ate)}<br><b>Modelo:</b> ${esc(rotuloModelo)}${listas}`
+      `<b>Parceiro:</b> ${todas ? "<b>TODOS os parceiros</b>" : esc(corpo.parceiro)}<br><b>Consultor:</b> ${rotuloConsultor ? `<b>${esc(rotuloConsultor)}</b> (só as tarefas e os lançamentos dele)` : "todos"}<br><b>Período:</b> ${esc(corpo.de)} a ${esc(corpo.ate)}<br><b>Modelo:</b> ${esc(rotuloModelo)}${listas}`
       + `<div class="aviso${todas ? " erro" : ""}">Vai <b>criar, alterar e excluir</b> apontamentos no Experience (inclusive órfãos e duplicatas) conforme o ClickUp.</div>`,
-      { botao: "Executar", perigo: todas });
+      { botao: "Executar", perigo: todas && !rotuloConsultor });
     if (!ok) return;
     travar(true);
     BPMS.iniciar("/api/sync/executar", { ...corpo, confirmar: true }, el, aoTerminarSync);
@@ -275,6 +281,8 @@
       const o = await get("/api/sync/opcoes");
       $("#modelo").innerHTML = o.modelos.map((m) => `<option value="${esc(m.valor)}">${esc(m.rotulo)}</option>`).join("");
       $("#modelo").value = o.modelo; $("#parceiro").value = o.parceiro; $("#de").value = o.de; $("#ate").value = o.ate;
+      $("#consultor").innerHTML = `<option value="">Todos os consultores</option>`
+        + (o.consultores || []).slice().sort((x, y) => BPMS.comparar(x.nome, y.nome)).map((c) => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
       contar();
     } catch (e) { toast(e.message, "erro"); }
     BPMS.retomar(["sync", "sync_sem_os", "sync_sem_os_excluir", "sync_incluir"], el, (t) => (t && t.tipo === "sync_sem_os" ? aoTerminarSemOs(t) : t && t.tipo === "sync_sem_os_excluir" ? aoTerminarExcluir(t) : t && t.tipo === "sync" ? aoTerminarSync(t) : travar(false)), () => travar(true));

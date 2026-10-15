@@ -55,7 +55,18 @@ def opcoes(req):
         "de": segunda.strftime("%d/%m/%Y"), "ate": (segunda + timedelta(days=6)).strftime("%d/%m/%Y"),
         "parceiro": ultima["parceiro"], "modelo": ultima["modelo"],
         "modelos": [{"valor": v, "rotulo": r} for v, r in ui.MODELOS_FILTRO_OPCOES],
+        "consultores": _consultores(),
     }
+
+
+def _consultores():
+    """Membros do ClickUp (mesmo cache da tela Lançar ClickUp) para o filtro por consultor."""
+    try:
+        import app_lancar
+        return [{"id": str(m.get("id")), "nome": m.get("nome") or ""} for m in app_lancar._motor().carregar_membros_cache()
+                if m.get("id") and m.get("nome")]
+    except Exception:
+        return []
 
 
 @rota("GET", "/api/sync/contar")
@@ -93,7 +104,7 @@ class _JanelaFalsa:
 ESTADO_FORA = {}   # chave -> caso (só os da última execução podem ser cadastrados)
 
 
-def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t):
+def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t, consultor=None):
     """Roda main._fluxo_principal e devolve os casos de consultor fora do projeto."""
     capturado = []
     original = m.imprimir_relatorio
@@ -105,7 +116,7 @@ def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t):
     m.imprimir_relatorio = _imprimir
     try:
         m._fluxo_principal(filtro, de_iso, ate_iso, modelo_filtro, cache_listas,
-                           _JanelaFalsa(t, m._SINAL_FIM_EXECUCAO))
+                           _JanelaFalsa(t, m._SINAL_FIM_EXECUCAO), consultor=consultor)
     finally:
         m.imprimir_relatorio = original
 
@@ -140,13 +151,20 @@ def executar(req):
     if valor_modelo not in [v for v, _ in ui.MODELOS_FILTRO_OPCOES]:
         raise ErroUsuario("Modelo de projetos inválido.")
     modelo_filtro = ui._resolver_modelo_filtro(valor_modelo)
+    consultor = None
+    cid = str(req.corpo.get("consultor") or "").strip()
+    if cid:
+        consultor = next((c for c in _consultores() if c["id"] == cid), None)
+        if not consultor:
+            raise ErroUsuario("Consultor não encontrado na lista do ClickUp. Atualize a página e escolha de novo.")
 
     def trabalho(t):
         m = _modulo_main()
         ui._salvar_ultima_execucao(parceiro, valor_modelo)
         inicio = time.time()
         cache_listas = {"dados": _cache["listas"]}
-        fora = _rodar_fluxo(m, parceiro or None, ini.isoformat(), fim.isoformat(), modelo_filtro, cache_listas, t)
+        fora = _rodar_fluxo(m, parceiro or None, ini.isoformat(), fim.isoformat(), modelo_filtro, cache_listas, t,
+                            consultor=consultor)
         logs = [p for p in glob.glob(os.path.join(PASTAS["raiz"], "logs", "log_*.txt"))
                 if os.path.getmtime(p) >= inicio - 1]
         if logs:
@@ -158,7 +176,7 @@ def executar(req):
                     "para cadastrar e lançar.")
         return {"mensagem": msg, "resultado": {"fora_do_projeto": fora}}
 
-    alvo = parceiro or "todos os parceiros"
+    alvo = (parceiro or "todos os parceiros") + (f" · {consultor['nome']}" if consultor else "")
     t = GERENTE.iniciar("sync", f"Sync tarefa ClickUp ⇄ Experience ({alvo})", trabalho, pasta=PASTAS["raiz"])
     return 200, {"tarefa": t.id}
 
