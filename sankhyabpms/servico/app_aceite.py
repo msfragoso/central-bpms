@@ -42,7 +42,7 @@ def _linha(r):
                 "processo": o.get("process_names"), "ok": o.get("_realizado_ok", True),
                 "executante": o.get("_executante") or "", "inicio": o.get("_inicio") or "",
                 "fim": o.get("_fim") or "", "intervalo": o.get("_intervalo") or "",
-                "alertas": o.get("_alertas") or []}
+                "alertas": o.get("_alertas") or [], "solucao": o.get("_solucao") or ""}
     return {
         "fap": r["fap"], "parceiro": r["parceiro"], "situacao": situacao,
         "num_os": [o.get("numos_sankhya") for o in r["os"]], "horas": r["total_horas"] if r["os"] else "",
@@ -95,7 +95,7 @@ def _conferir_horarios(token, resultados, log):
       - horas realizadas quebradas: fora de :00 / :30 (ex.: 15:45, 15:01, 16:03).
     O horário de início/fim/intervalo vem das tarefas da OS (get_order_tasks, só leitura).
     """
-    from experience_api.orders import get_order_tasks
+    from experience_api.orders import get_order_tasks, extrair_solucao
     todas = [o for r in resultados for o in r["os"]]
     for i, o in enumerate(todas, 1):
         alertas = []
@@ -110,6 +110,8 @@ def _conferir_horarios(token, resultados, log):
         intervalo = sum(intervalos)
         realizado = _min(o.get("diff_time"))
         o["_inicio"], o["_fim"] = inicio, fim
+        # Solução da OS (16/10/2026): mesmo texto da Consulta de OS, das tarefas da OS.
+        o["_solucao"] = "\n\n".join(s for s in (extrair_solucao(x.get("additional_information")) for x in tarefas) if s)
         o["_intervalo"] = f"{intervalo // 60:02d}:{intervalo % 60:02d}" if tarefas else ""
         if realizado is not None and realizado > 8 * 60 and tarefas and intervalo == 0:
             alertas.append(f"{o.get('diff_time')} h sem intervalo lançado")

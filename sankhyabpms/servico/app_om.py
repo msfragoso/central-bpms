@@ -139,3 +139,87 @@ def teste(req):
 def diagnostico(req):
     from om_sessao import diagnostico as d
     return 200, d()
+
+
+# ----------------------------------------------------------------------------
+# Relatório das OS de um parceiro (16/10/2026, pedido do Fragoso): as mesmas
+# informações da tela Consulta de OS do OM, filtradas por parceiro. Só leitura.
+# ----------------------------------------------------------------------------
+def _html_relatorio_parceiro(parceiro, ini, fim, df, gerado_em):
+    from html import escape as e
+
+    def minutos(h):
+        try:
+            hh, mm = str(h).split(":")[:2]
+            return int(hh) * 60 + int(mm)
+        except ValueError:
+            return 0
+    total = sum(minutos(h) for h in df["Tempo gasto"])
+    por_exec = df.groupby("Nome (Executante)")["Tempo gasto"].agg(lambda s: sum(minutos(h) for h in s))
+    por_fap = df.groupby("Número Unico FAP")["Tempo gasto"].agg(lambda s: sum(minutos(h) for h in s))
+    hm = lambda m: f"{m // 60:02d}:{m % 60:02d}"
+    resumo = "".join(f"<tr><td>{e(str(k))}</td><td class='c'>{int((df['Nome (Executante)'] == k).sum())}</td>"
+                     f"<td class='c'>{hm(v)}</td></tr>" for k, v in por_exec.sort_values(ascending=False).items())
+    faps = " · ".join(f"FAP {e(str(k))}: {hm(v)}" for k, v in por_fap.items())
+    linhas = "".join(
+        f"<tr><td>{e(str(r['Dt execução']))}</td><td>{e(str(r['Núm. OS']))}</td><td>{e(str(r['Nome (Executante)']))}</td>"
+        f"<td>{e(str(r['Número Unico FAP']))}</td><td class='c'>{e(str(r['Hora Inicial']))}–{e(str(r['Hora Final']))}</td>"
+        f"<td class='c'>{e(str(r['Intervalo']))}</td><td class='c'><b>{e(str(r['Tempo gasto']))}</b></td>"
+        f"<td class='sol'>{e(str(r['Solução'] or '')).replace(chr(10), '<br>')}</td></tr>"
+        for _, r in df.iterrows())
+    nome_parc = e(str(df["Nome Parceiro (Parceiro)"].iloc[0])) if len(df) else e(parceiro)
+    return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>OS {nome_parc}</title>
+<style>@page{{size:A4 landscape;margin:12mm}} body{{font-family:Segoe UI,Arial,sans-serif;color:#14211b;font-size:11px}}
+h1{{color:#0a7a52;font-size:20px;margin:0}} .sub{{color:#5b6b63;margin:4px 0 14px}}
+.box{{border:2px solid #0a7a52;background:#e5f3ec;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px}}
+table{{border-collapse:collapse;width:100%}} th{{background:#0a7a52;color:#fff;text-align:left;padding:6px}}
+td{{border-bottom:1px solid #d7e0db;padding:5px 6px;vertical-align:top}} tr:nth-child(even) td{{background:#f3f6f4}}
+.c{{text-align:center;white-space:nowrap}} .sol{{font-size:10px;color:#33443c}} tr{{break-inside:avoid}}
+th,td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>
+<h1>Ordens de Serviço — {nome_parc}</h1>
+<div class="sub">Execução de {ini:%d/%m/%Y} a {fim:%d/%m/%Y} · fonte: Sankhya-OM (Consulta de OS) · gerado em {gerado_em}</div>
+<div class="box"><b>{len(df)} OS</b> · <b>{hm(total)}</b> horas realizadas · {faps}
+<table style="margin-top:8px;width:auto;min-width:50%"><tr><th>Executante</th><th class="c">OS</th><th class="c">Horas</th></tr>{resumo}</table></div>
+<table><tr><th>Execução</th><th>Nº OS</th><th>Executante</th><th>FAP</th><th class="c">Horário</th><th class="c">Intervalo</th>
+<th class="c">Tempo gasto</th><th>Solução</th></tr>{linhas}</table></body></html>"""
+
+
+@rota("POST", "/api/om/relatorio-parceiro")
+def relatorio_parceiro(req):
+    import os
+    from datetime import datetime
+    from nucleo import GERENTE, ErroUsuario, dados_arquivo, periodo_br
+    from clickup_sync.text_matching import normalizar_texto
+    ini, fim = periodo_br(req.corpo.get("de"), req.corpo.get("ate"))
+    parceiro = (req.corpo.get("parceiro") or "").strip()
+    if not parceiro:
+        raise ErroUsuario("Informe o parceiro.")
+    if OM.status().get("estado") != "conectado":
+        raise ErroUsuario("O Sankhya-OM não está conectado. Conecte pela tela da Conferência de OS.")
+
+    def trabalho(t):
+        df, _ = buscar_os(ini, fim, t.log)
+        alvo = normalizar_texto(parceiro)
+        df = df[df["Nome Parceiro (Parceiro)"].map(lambda n: alvo in normalizar_texto(n or ""))].copy()
+        df["_ord"] = df["Dt execução"].map(lambda d: datetime.strptime(str(d)[:10], "%d/%m/%Y") if d else datetime.min)
+        df = df.sort_values(["_ord", "Hora Inicial"]).drop(columns="_ord")
+        t.log(f"{len(df)} OS do parceiro '{parceiro}' no período.")
+        if df.empty:
+            return {"mensagem": f"Nenhuma OS do parceiro '{parceiro}' entre {ini:%d/%m/%Y} e {fim:%d/%m/%Y}."}
+        os.makedirs(dados_arquivo("relatorios"), exist_ok=True)
+        base = os.path.join(dados_arquivo("relatorios"), f"OS {parceiro} {ini:%d-%m-%Y} a {fim:%d-%m-%Y}")
+        df.drop(columns=[c for c in ("Tag ClickUp", "Nro.único do pedido") if c in df.columns]).to_excel(base + ".xlsx", index=False)
+        t.adicionar_arquivo("OS do parceiro (.xlsx)", base + ".xlsx")
+        with open(base + ".html", "w", encoding="utf-8") as f:
+            f.write(_html_relatorio_parceiro(parceiro, ini, fim, df, datetime.now().strftime("%d/%m/%Y às %Hh%M")))
+        t.adicionar_arquivo("Relatório (HTML)", base + ".html")
+        try:
+            from pdf_relatorio import html_para_pdf
+            t.adicionar_arquivo("Relatório (PDF)", html_para_pdf(base + ".html"))
+        except Exception as e:
+            t.log(f"⚠ PDF não gerado ({e}); o HTML e o Excel estão prontos.")
+        return {"mensagem": f"Relatório gerado: {len(df)} OS de {parceiro}. Nada foi alterado no OM.",
+                "resultado": {"pasta": dados_arquivo("relatorios"), "arquivo": base}}
+
+    t = GERENTE.iniciar("om_relatorio", f"OS do parceiro {parceiro} (OM, só leitura)", trabalho)
+    return 200, {"tarefa": t.id}

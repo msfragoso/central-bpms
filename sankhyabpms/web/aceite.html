@@ -38,7 +38,7 @@
       <table id="tabela">
         <thead><tr>
           <th class="centro">Enviar</th><th data-ordem="fap">FAP</th><th data-ordem="parceiro">Parceiro</th>
-          <th data-ordem="situacao">Situação</th><th>Nº OS</th><th data-ordem="data">Data execução</th><th data-ordem="executante">Executante</th><th data-ordem="horas">Horas</th><th>Aprovadores</th>
+          <th data-ordem="situacao">Situação</th><th>Nº OS</th><th data-ordem="data">Data execução</th><th data-ordem="executante">Executante</th><th data-ordem="horas">Horas</th><th>Solução</th><th>Aprovadores</th>
         </tr></thead>
         <tbody id="corpo"><tr><td colspan="9" class="vazio-tabela">Informe o período e clique em Conferir.</td></tr></tbody>
       </table>
@@ -89,7 +89,7 @@
     });
     const corpo = $("#corpo");
     if (!lista.length) {
-      corpo.innerHTML = `<tr><td colspan="9" class="vazio-tabela">Nenhuma FAP com OS no período.</td></tr>`;
+      corpo.innerHTML = `<tr><td colspan="10" class="vazio-tabela">Nenhuma FAP com OS no período.</td></tr>`;
     } else {
       corpo.innerHTML = lista.map(({ r, o, k }) => {
         const pronta = r.situacao === "PRONTA" && o;
@@ -105,6 +105,9 @@
           <td>${o ? esc(o.realizado || "-") + (o.ok ? "" : " ⚠")
             + (o.inicio ? `<br><span style="font-size:11px;color:var(--suave);white-space:nowrap">${esc(o.inicio)}–${esc(o.fim)} · int. ${esc(o.intervalo || "00:00")}</span>` : "")
             + (o.alertas && o.alertas.length ? `<br><span style="font-size:11px;color:var(--aviso);font-weight:600">${o.alertas.map(esc).join("<br>")}</span>` : "") : "-"}</td>
+          <td style="min-width:220px;max-width:340px">${o && o.solucao ? (o.solucao.length > 120
+            ? `<details><summary style="cursor:pointer;font-size:12px">${esc(o.solucao.slice(0, 120))}…</summary><div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div></details>`
+            : `<div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div>`) : ""}</td>
           <td>${esc(r.aprovadores.map((a) => a.email).join(", "))}</td></tr>`;
       }).join("");
     }
@@ -121,6 +124,7 @@
       cb.checked ? marcadas.add(cb.dataset.marcar) : marcadas.delete(cb.dataset.marcar);
       return desenhar();
     }
+    if (e.target.closest("details")) return;  // abrir/fechar a solução não abre o detalhe da FAP
     const tr = e.target.closest("tr[data-fap]");
     if (tr) detalhe(linhas.find((r) => r.fap === tr.dataset.fap));
   });
