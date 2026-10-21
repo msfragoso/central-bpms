@@ -39,7 +39,8 @@ def ler_config():
 
 
 CONFIG = ler_config()
-MOTORES = os.path.normpath(CONFIG["pasta_motores"])
+# pasta_motores relativa (pacote para outro PC) é resolvida a partir da pasta da Central.
+MOTORES = os.path.normpath(os.path.join(RAIZ, CONFIG["pasta_motores"]))
 PASTAS = {
     "raiz": MOTORES,
     "conferencia": os.path.join(MOTORES, "conferencia_os"),

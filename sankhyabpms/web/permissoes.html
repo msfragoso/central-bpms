@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Permissões ClickUp</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="perm.titulo">Permissões ClickUp</h1>
+      <p data-texto="perm.subtitulo">Libera acesso a pastas e listas do PMO BP-MS em lote · sempre com a sua confirmação antes de aplicar</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="permissoes"></span>
+  </div>
+
+  <section class="card faixa">
+    <h2>1. Conexão com o ClickUp</h2>
+    <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px">A liberação usa o mesmo caminho da tela do ClickUp, com o seu login. Na 1ª vez abre uma janela do Chrome para o login; depois a conexão é feita em segundo plano, sem janela (ela só volta se o ClickUp pedir login de novo).</p>
+    <div class="acoes" style="margin:0">
+      <button class="btn secundario" id="btn-conectar" type="button">Conectar ao ClickUp</button>
+      <span id="conexao" class="ajuda"></span>
+    </div>
+  </section>
+
+  <div class="grade duas" style="margin-top:14px">
+    <section class="card faixa">
+      <h2>2. Usuário e nível</h2>
+      <div class="campos">
+        <div class="campo"><label for="filtro-usuario">Usuário</label>
+          <input id="filtro-usuario" placeholder="digite o nome ou e-mail…" autocomplete="off">
+          <input type="hidden" id="usuario">
+          <div id="sugestoes" class="oculto" style="border:1px solid var(--linha);border-radius:8px;margin-top:4px;max-height:220px;overflow:auto;background:var(--card)"></div>
+          <div id="usuario-escolhido" class="ajuda" style="margin-top:6px"></div>
+        </div>
+        <div class="campo"><label for="nivel">Nível de acesso</label><select id="nivel"></select>
+          <span class="ajuda">Convidados precisam do acesso pasta a pasta; membros e administradores já herdam do espaço.</span></div>
+      </div>
+      <div class="acoes"><button class="btn secundario" id="btn-ver" type="button">Ver acessos atuais do usuário</button>
+        <button class="btn secundario" id="btn-pdf-usuario" type="button" disabled title="Todas as pastas e listas, só deste usuário">📄 PDF deste usuário</button></div>
+    </section>
+
+    <section class="card faixa">
+      <h2>3. Pastas e listas <span class="ajuda" id="contagem"></span></h2>
+      <div class="campos" style="margin-bottom:8px">
+        <div class="campo"><input id="filtro-pasta" placeholder="filtrar pastas e listas…"></div>
+      </div>
+      <div class="acoes" style="margin:0 0 8px">
+        <button class="btn secundario pequeno" id="btn-todas" type="button">Marcar todas as pastas visíveis</button>
+        <button class="btn secundario pequeno" id="btn-listas-sem-z" type="button" title="Listas arquivadas começam com Z">Marcar todas as listas que não começam com Z</button>
+        <button class="btn secundario pequeno" id="btn-nenhuma" type="button">Desmarcar tudo</button>
+      </div>
+      <div class="tabela-caixa" style="max-height:420px">
+        <div id="arvore" style="padding:8px 10px;font-size:13px"></div>
+      </div>
+      <span class="ajuda">Marcar a pasta já libera as listas dentro dela. Marque uma lista sozinha só quando ela for privada ou precisar de um nível diferente.</span>
+    </section>
+  </div>
+
+  <section class="card faixa" style="margin-top:14px">
+    <div class="acoes" style="margin:0">
+      <button class="btn" id="btn-aplicar" type="button" disabled>Aplicar permissões…</button>
+      <span class="espaco"></span>
+      <button class="btn secundario" id="btn-pdf" type="button" title="Todas as pastas e listas, com índice clicável">📄 PDF todos os usuários</button>
+    </div>
+    <pre class="log" id="log" style="margin-top:12px"></pre>
+    <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+    <div class="arquivos" id="arquivos"></div>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, esc, toast, confirmar, normalizar } = BPMS;
+  BPMS.montarTopo("permissoes");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  let dados = null, marcadas = new Set(), atuais = { pastas: {}, listas: {} }, situacao = {}, ocupado = false;
+  // Pastas abertas na árvore: continuam abertas quando a tela redesenha (marcar lista, ler acessos...).
+  const abertas = new Set();
+  const NOMES_NIVEL = {};
+
+  // Nomes dos níveis para MOSTRAR o que já existe (os do ClickUp: Ver, Comentar, Editar, Edição total).
+  const NOMES_EXIBICAO = { 1: "Ver", 3: "Comentar", 4: "Editar", 5: "Edição total" };
+  // Cores (21/10/2026): Edição total = verde, Ver = laranja, demais níveis = amarelo.
+  const nomeNivel = (n) => NOMES_NIVEL[n] || NOMES_EXIBICAO[n] || `nível ${n}`;
+  function etiquetaNivel(nivel, texto, titulo) {
+    const cor = nivel >= 5 ? "class=\"etiqueta enviada\""
+      : nivel === 1 ? "class=\"etiqueta\" style=\"background:#e07b1a;color:#fff;font-size:11px\""
+      : "class=\"etiqueta verificar\"";
+    return `<span ${cor}${cor.includes("style") ? "" : " style=\"font-size:11px\""}${titulo ? ` title="${esc(titulo)}"` : ""}>${esc(texto)}</span>`;
+  }
+  function nivelTxt(a, ehLista) {
+    if (!a) return "";
+    const n = nomeNivel(a.nivel);
+    if (ehLista && !a.herdado) return etiquetaNivel(a.nivel, `${n} · só na lista`, "Permissão dada direto nesta lista (não vem da pasta)");
+    return etiquetaNivel(a.nivel, `${n}${a.herdado ? " (herdado)" : ""}`);
+  }
+  // 21/10/2026: na linha da PASTA, resume as listas dela com permissão dada só na lista
+  // (não herdada), uma etiqueta por nível, com a mesma cor do nível.
+  function resumoSoNaLista(p) {
+    const proprias = p.listas.map((l) => atuais.listas[l.id]).filter((a) => a && !a.herdado);
+    if (!proprias.length) return "";
+    const porNivel = {};
+    proprias.forEach((a) => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
+    return Object.entries(porNivel).sort((x, y) => y[0] - x[0])
+      .map(([nv, qt]) => etiquetaNivel(+nv, `${qt} lista(s) só na lista: ${nomeNivel(+nv)}`, "Listas desta pasta com permissão dada direto na lista"))
+      .join(" ");
+  }
+  // Usuário (21/10/2026): só aparecem sugestões enquanto digita; depois de escolher,
+  // a tela mostra apenas o usuário selecionado.
+  function desenharUsuarios() {
+    const q = normalizar($("#filtro-usuario").value);
+    const caixa = $("#sugestoes");
+    if (!q) { caixa.classList.add("oculto"); caixa.innerHTML = ""; return; }
+    const achados = dados.membros.filter((m) => normalizar(`${m.nome} ${m.email} ${m.papel}`).includes(q)).slice(0, 8);
+    caixa.innerHTML = achados.length
+      ? achados.map((m) => `<div data-u="${esc(m.id)}" style="padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--linha)">${esc(m.nome)} <span class="ajuda">· ${esc(m.papel)}${m.email ? " · " + esc(m.email) : ""}</span></div>`).join("")
+      : `<div class="ajuda" style="padding:6px 10px">Nenhum usuário encontrado.</div>`;
+    caixa.classList.remove("oculto");
+  }
+  function escolherUsuario(id) {
+    const m = dados.membros.find((x) => x.id === id);
+    $("#usuario").value = m ? m.id : "";
+    $("#filtro-usuario").value = "";
+    desenharUsuarios();
+    $("#usuario-escolhido").innerHTML = m
+      ? `Selecionado: <b>${esc(m.nome)}</b> · ${esc(m.papel)}${m.email ? " · " + esc(m.email) : ""} <button class="btn secundario pequeno" type="button" id="btn-trocar-usuario">trocar</button>`
+      : "";
+    atuais = { pastas: {}, listas: {} }; situacao = {}; desenharArvore();
+  }
+  $("#sugestoes").addEventListener("click", (e) => { const d = e.target.closest("[data-u]"); if (d) escolherUsuario(d.dataset.u); });
+  $("#usuario-escolhido").addEventListener("click", (e) => { if (e.target.id === "btn-trocar-usuario") { escolherUsuario(""); $("#filtro-usuario").focus(); } });
+  $("#filtro-usuario").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { const d = $("#sugestoes [data-u]"); if (d) { e.preventDefault(); escolherUsuario(d.dataset.u); } }
+  });
+  function desenharArvore() {
+    const q = normalizar($("#filtro-pasta").value);
+    // Subpastas aparecem DENTRO da pasta-mãe (ex.: Produtos BP-MS, Adm, MMS e Trading em 1-BP-MS).
+    const ids = new Set(dados.pastas.map((p) => p.id));
+    const filhas = (pai) => dados.pastas.filter((p) => (p.pai || "") === pai || (!pai && p.pai && !ids.has(p.pai)));
+    const bate = (p) => !q || normalizar(p.nome).includes(q) || p.listas.some((l) => normalizar(p.nome + " " + l.nome).includes(q))
+      || filhas(p.id).some(bate);
+    const pasta = (p) => {
+      if (!bate(p)) return "";
+      const listas = p.listas.filter((l) => !q || normalizar(p.nome + " " + l.nome).includes(q) || normalizar(p.nome).includes(q));
+      const subs = p.id ? filhas(p.id) : [];
+      const kp = `folder:${p.id}`;
+      return `<details data-pasta="${esc(p.id || p.nome)}" ${q || abertas.has(p.id || p.nome) ? "open" : ""} style="margin:2px 0"><summary style="cursor:pointer">
+        ${p.id ? `<input type="checkbox" data-k="${esc(kp)}" ${marcadas.has(kp) ? "checked" : ""}>` : ""}
+        <b>${esc(p.nome)}</b> ${nivelTxt(atuais.pastas[p.id])} ${resumoSoNaLista(p)} ${situacao[kp] ? `<span class="etiqueta ${situacao[kp] === "OK" ? "enviada" : "falhou"}">${esc(situacao[kp])}</span>` : ""}
+        <span class="ajuda">(${subs.length ? `${subs.length} subpasta(s), ` : ""}${p.listas.length} lista(s))</span></summary>
+        <div style="padding-left:26px">${subs.map(pasta).join("")}${(q ? listas : p.listas).map((l) => { const kl = `list:${l.id}`; return `<label class="checar" style="display:block;margin:2px 0">
+          <input type="checkbox" data-k="${esc(kl)}" ${marcadas.has(kl) ? "checked" : ""}> ${esc(l.nome)} ${nivelTxt(atuais.listas[l.id], true)}
+          ${situacao[kl] ? `<span class="etiqueta ${situacao[kl] === "OK" ? "enviada" : "falhou"}">${esc(situacao[kl])}</span>` : ""}</label>`; }).join("")}</div></details>`;
+    };
+    $("#arvore").innerHTML = filhas("").map(pasta).join("");
+    const np = [...marcadas].filter((k) => k.startsWith("folder:")).length, nl = marcadas.size - np;
+    $("#contagem").textContent = `${np} pasta(s) e ${nl} lista(s) marcada(s)`;
+    $("#btn-aplicar").disabled = ocupado || !marcadas.size || !$("#usuario").value;
+    $("#btn-pdf-usuario").disabled = ocupado || !$("#usuario").value;
+  }
+  $("#arvore").addEventListener("change", (e) => {
+    const cb = e.target.closest("[data-k]"); if (!cb) return;
+    cb.checked ? marcadas.add(cb.dataset.k) : marcadas.delete(cb.dataset.k);
+    desenharArvore();
+  });
+  $("#arvore").addEventListener("click", (e) => { if (e.target.matches("summary input")) e.stopPropagation(); });
+  // "toggle" não sobe pela árvore: escuta na captura para lembrar quais pastas estão abertas.
+  $("#arvore").addEventListener("toggle", (e) => {
+    const d = e.target.closest("details[data-pasta]"); if (!d) return;
+    d.open ? abertas.add(d.dataset.pasta) : abertas.delete(d.dataset.pasta);
+  }, true);
+  $("#filtro-pasta").addEventListener("input", desenharArvore);
+  $("#filtro-usuario").addEventListener("input", desenharUsuarios);
+  $("#btn-todas").onclick = () => {
+    const q = normalizar($("#filtro-pasta").value);
+    dados.pastas.forEach((p) => { if (p.id && (!q || normalizar(p.nome).includes(q) || p.listas.some((l) => normalizar(p.nome + " " + l.nome).includes(q)))) marcadas.add(`folder:${p.id}`); });
+    desenharArvore();
+  };
+  $("#btn-nenhuma").onclick = () => { marcadas.clear(); desenharArvore(); };
+  // 21/10/2026: listas "Z…" são as arquivadas/encerradas -- ficam de fora. Respeita o filtro.
+  $("#btn-listas-sem-z").onclick = () => {
+    const q = normalizar($("#filtro-pasta").value);
+    let n = 0;
+    dados.pastas.forEach((p) => p.listas.forEach((l) => {
+      if (/^\s*z/i.test(l.nome)) return;
+      if (q && !normalizar(p.nome + " " + l.nome).includes(q)) return;
+      marcadas.add(`list:${l.id}`); n++;
+    }));
+    desenharArvore();
+    toast(`${n} lista(s) marcada(s) (sem as que começam com Z).`, "ok");
+  };
+
+  async function verConexao() {
+    try {
+      const s = await get("/api/permissoes/status");
+      const txt = s.estado === "conectado" ? `✓ conectado${s.desde ? " desde " + s.desde : ""}` : (s.mensagem || "não conectado");
+      $("#conexao").innerHTML = `<span class="${s.estado === "conectado" ? "" : "erro"}">${esc(txt)}</span>`;
+      return s.estado === "conectado";
+    } catch (e) { return false; }
+  }
+  // 21/10/2026: conecta em segundo plano (sem janela) com o login salvo; a janela só
+  // aparece se o ClickUp pedir login de novo. Ao abrir a tela, já tenta sozinho.
+  async function conectar(avisar) {
+    $("#btn-conectar").disabled = true;
+    $("#conexao").innerHTML = `<span class="ajuda">conectando ao ClickUp em segundo plano…</span>`;
+    try {
+      const s = await post("/api/permissoes/conectar", {});
+      if (s.estado !== "conectado" && avisar !== false) toast("Faça o login na janela do ClickUp que abriu. Depois ela é minimizada sozinha.", "ok");
+    } catch (e) { if (avisar !== false) toast(e.message, "erro"); }
+    $("#btn-conectar").disabled = false;
+    verConexao();
+  }
+  $("#btn-conectar").onclick = () => conectar(true);
+  setInterval(verConexao, 3000);
+
+  $("#btn-ver").onclick = async () => {
+    const u = $("#usuario").value; if (!u) return toast("Escolha o usuário.", "erro");
+    if (!(await verConexao())) return toast("Conecte ao ClickUp primeiro.", "erro");
+    const b = $("#btn-ver"); b.disabled = true; b.textContent = "Lendo acessos…";
+    try {
+      atuais = await post("/api/permissoes/acessos", { usuario: u, workspace: dados.workspace,
+        pastas: dados.pastas.map((p) => p.id).filter(Boolean), listas: dados.pastas.flatMap((p) => p.listas.map((l) => l.id)) });
+      desenharArvore();
+    } catch (e) { toast(e.message, "erro"); }
+    b.disabled = false; b.textContent = "Ver acessos atuais do usuário";
+  };
+
+  const travar = (sim) => { ocupado = sim; $("#btn-pdf").disabled = sim; desenharArvore(); };
+  // PDF de UM usuário (21/10/2026): o nível dele em cada pasta e lista, com índice clicável.
+  $("#btn-pdf-usuario").onclick = async () => {
+    const u = $("#usuario").value; if (!u) return toast("Escolha o usuário.", "erro");
+    if (!(await verConexao())) return toast("Conecte ao ClickUp primeiro.", "erro");
+    travar(true);
+    BPMS.iniciar("/api/permissoes/relatorio-usuario", { workspace: dados.workspace, usuario: u }, el, () => travar(false));
+  };
+  // PDF navegável (21/10/2026): índice de pastas com links; em cada pasta, quem tem acesso e as listas.
+  $("#btn-pdf").onclick = async () => {
+    if (!(await verConexao())) return toast("Conecte ao ClickUp primeiro.", "erro");
+    travar(true);
+    BPMS.iniciar("/api/permissoes/relatorio", { workspace: dados.workspace }, el, () => travar(false));
+  };
+  $("#btn-aplicar").onclick = async () => {
+    const u = $("#usuario").value; if (!u) return toast("Escolha o usuário.", "erro");
+    if (!(await verConexao())) return toast("Conecte ao ClickUp primeiro.", "erro");
+    const membro = dados.membros.find((m) => m.id === u);
+    const nivel = +$("#nivel").value;
+    const nomes = {};
+    dados.pastas.forEach((p) => { nomes[`folder:${p.id}`] = p.nome; p.listas.forEach((l) => { nomes[`list:${l.id}`] = `${p.nome} / ${l.nome}`; }); });
+    const itens = [...marcadas].map((k) => { const [tipo, id] = k.split(":"); return { tipo, id, nome: nomes[k] || id }; });
+    const lista = itens.slice(0, 40).map((i) => `<li>${i.tipo === "folder" ? "📁" : "📄"} ${esc(i.nome)}</li>`).join("") + (itens.length > 40 ? `<li>… e mais ${itens.length - 40}</li>` : "");
+
+    // Prévia (21/10/2026): listas DENTRO das pastas marcadas em que o usuário já tem
+    // permissão própria (não herdada) com outro nível -- essas não mudam só com a pasta.
+    const b = $("#btn-aplicar"); b.disabled = true; b.textContent = "Conferindo as listas…";
+    let proprias = [];
+    try {
+      const pastasMarcadas = dados.pastas.filter((p) => p.id && marcadas.has(`folder:${p.id}`));
+      const idsListas = pastasMarcadas.flatMap((p) => p.listas.map((l) => l.id)).filter((id) => !marcadas.has(`list:${id}`));
+      if (idsListas.length) {
+        const r = await post("/api/permissoes/acessos", { usuario: u, workspace: dados.workspace, pastas: [], listas: idsListas });
+        pastasMarcadas.forEach((p) => p.listas.forEach((l) => {
+          const a = r.listas[l.id];
+          if (a && !a.herdado && a.nivel !== nivel) proprias.push({ tipo: "list", id: l.id, nome: `${p.nome} / ${l.nome}`, nivel: a.nivel });
+        }));
+      }
+    } catch (e) { toast(`Não consegui conferir as listas: ${e.message}`, "erro"); }
+    b.textContent = "Aplicar permissões…"; desenharArvore();
+
+    const aviso = proprias.length
+      ? `<div class="aviso erro"><b>Atenção:</b> em ${proprias.length} lista(s) dessas pastas o usuário já tem permissão própria, que <b>não muda</b> só liberando a pasta:<ul>${
+          proprias.slice(0, 25).map((p) => `<li>📄 ${esc(p.nome)} — hoje: <b>${esc(NOMES_NIVEL[p.nivel] || NOMES_EXIBICAO[p.nivel] || "nível " + p.nivel)}</b></li>`).join("")}${proprias.length > 25 ? `<li>… e mais ${proprias.length - 25}</li>` : ""}</ul>
+          Escolha abaixo se quer incluir essas listas para ficarem também em <b>${esc(NOMES_NIVEL[nivel])}</b>.</div>`
+      : "";
+    const escolha = await BPMS.modal({ titulo: `Liberar acesso para ${membro ? membro.nome : u}?`,
+      html: `<b>Usuário:</b> ${esc(membro ? `${membro.nome} (${membro.papel}${membro.email ? ", " + membro.email : ""})` : u)}<br><b>Nível:</b> ${esc(NOMES_NIVEL[nivel])}<br><b>${itens.length} item(ns):</b><ul>${lista}</ul>`
+        + aviso
+        + `<div class="aviso">A Central aplica no ClickUp um item por vez, com a sua sessão, e confere o resultado de cada um. Fica registrado em dados/permissoes_clickup.jsonl.</div>`,
+      opcoes: [{ valor: null, rotulo: "Cancelar", estilo: "neutro" }]
+        .concat(proprias.length ? [{ valor: "so", rotulo: "Liberar sem essas listas", estilo: "neutro" },
+                                   { valor: "com", rotulo: `Liberar e incluir as ${proprias.length} lista(s)` }]
+                                : [{ valor: "so", rotulo: "Liberar acesso" }]) });
+    if (!escolha) return;
+    if (escolha === "com") proprias.forEach((p) => itens.push({ tipo: p.tipo, id: p.id, nome: p.nome }));
+    travar(true);
+    BPMS.iniciar("/api/permissoes/aplicar", { usuario: u, nome_usuario: membro ? membro.nome : u, workspace: dados.workspace, nivel, itens, confirmar: true }, el, (t) => {
+      if (t && t.resultado) { Object.assign(situacao, t.resultado.situacao); marcadas.clear(); }
+      travar(false);
+    });
+  };
+
+  (async () => {
+    try {
+      dados = await get("/api/permissoes/estrutura");
+      dados.niveis.forEach((n) => { NOMES_NIVEL[n.valor] = n.rotulo; });
+      $("#nivel").innerHTML = dados.niveis.slice().reverse().map((n) => `<option value="${n.valor}">${esc(n.rotulo)}</option>`).join("");
+      desenharUsuarios(); desenharArvore();
+    } catch (e) { toast(e.message, "erro"); }
+    if (!(await verConexao())) conectar(false);
+    BPMS.retomar(["permissoes", "permissoes_relatorio"], el, () => travar(false), () => travar(true));
+  })();
+})();
+</script>
+</body>
+</html>

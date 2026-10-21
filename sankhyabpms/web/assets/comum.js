@@ -11,6 +11,7 @@ const BPMS = (() => {
     { id: "aceite", href: "aceite.html", rotulo: "Aceite de OS" },
     { id: "agenda", href: "agenda.html", rotulo: "Agenda semanal" },
     { id: "atendimentos", href: "atendimentos.html", rotulo: "Atendimentos WhatsApp" },
+    { id: "permissoes", href: "permissoes.html", rotulo: "Permissões ClickUp" },
   ];
 
   // ------------------------------------------------------------ util
@@ -57,6 +58,14 @@ const BPMS = (() => {
 
   // ------------------------------------------------------------ cabeçalho
   function montarTopo(ativo) {
+    // Assinatura no rodapé de todas as telas (pedido do Fragoso, 21/10/2026).
+    if (!document.querySelector(".assinatura")) {
+      const rodape = document.createElement("footer");
+      rodape.className = "assinatura";
+      rodape.textContent = "by MarceloFragoso";
+      rodape.style.cssText = "text-align:center;color:var(--suave);font-size:12px;padding:18px 0 22px;opacity:.85";
+      document.body.append(rodape);
+    }
     const topo = document.createElement("header");
     topo.className = "topo";
     topo.innerHTML = `<div class="topo-dentro">

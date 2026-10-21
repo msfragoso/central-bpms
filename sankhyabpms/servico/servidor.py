@@ -25,16 +25,16 @@ nucleo.preparar_sys_path()
 nucleo.instalar_log_de_erros()
 nucleo.instalar_roteador()
 
+import importlib  # noqa: E402
 import rotas_tarefas  # noqa: E402,F401  (registram as rotas ao importar)
 import rotas_textos  # noqa: E402,F401
-import app_lancar  # noqa: E402,F401
-import app_fase3  # noqa: E402,F401
-import app_conferencia  # noqa: E402,F401
-import app_aceite  # noqa: E402,F401
-import app_sync  # noqa: E402,F401
-import app_om  # noqa: E402,F401
-import app_agenda  # noqa: E402,F401
-import app_atendimentos  # noqa: E402,F401
+
+# Módulos (telas) carregados. config.json pode limitar com "modulos": ["lancar"]
+# -- usado no pacote "só Lançar ClickUp" para outro computador (20/10/2026).
+MODULOS = CONFIG.get("modulos") or ["lancar", "fase3", "conferencia", "aceite", "sync", "om", "agenda", "atendimentos",
+                                   "permissoes"]
+for _m in MODULOS:
+    importlib.import_module(f"app_{_m}")
 
 PORTA = int(CONFIG.get("porta") or 8766)
 HOSTS_OK = {f"127.0.0.1:{PORTA}", f"localhost:{PORTA}"}
