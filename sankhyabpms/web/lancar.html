@@ -27,7 +27,7 @@
       <h2>Demanda</h2>
       <div class="campos">
         <div class="campo">
-          <label for="parceiro">1. Parceiro</label>
+          <label for="parceiro">1. Parceiro <span class="ajuda" style="color:var(--perigo)">*</span></label>
           <input id="parceiro" placeholder="digite para buscar">
         </div>
         <div class="campo">
@@ -39,15 +39,15 @@
           <span class="ajuda" id="fap-info"></span>
         </div>
         <div class="campo c6">
-          <label for="origem">2. Origem da demanda</label>
+          <label for="origem">2. Origem da demanda <span class="ajuda" style="color:var(--perigo)">*</span></label>
           <select id="origem"><option value=""></option></select>
         </div>
         <div class="campo c6">
-          <label for="usuario">4. Usuário cliente <span class="ajuda">(opcional)</span></label>
+          <label for="usuario">4. Usuário cliente <span class="ajuda" style="color:var(--perigo)">*</span></label>
           <input id="usuario">
         </div>
         <div class="campo">
-          <label for="titulo">3. Título da tarefa</label>
+          <label for="titulo">3. Título da tarefa <span class="ajuda" style="color:var(--perigo)">*</span></label>
           <input id="titulo">
         </div>
         <div class="campo">
@@ -80,8 +80,17 @@
     </section>
 
     <section class="card faixa">
-      <h2>8. Detalhamento</h2>
+      <h2><span>8. Detalhamento <span style="color:var(--perigo);text-transform:none">*</span></span></h2>
       <textarea id="detalhamento" rows="14" placeholder="Cole o texto da demanda aqui"></textarea>
+      <div class="campo" style="margin-top:10px">
+        <label for="anexos">📎 Anexar arquivo <span class="ajuda">(opcional · vários arquivos · até 25 MB no total)</span></label>
+        <div id="anexos-area" style="border:1px dashed var(--campo-borda);border-radius:8px;padding:10px;text-align:center">
+          <input type="file" id="anexos" multiple style="display:none">
+          <button class="btn secundario pequeno" type="button" id="btn-anexar">+ Adicionar arquivos</button>
+          <span class="ajuda">ou arraste os arquivos para cá · pode adicionar várias vezes</span>
+          <div id="anexos-lista" style="text-align:left;margin-top:6px"></div>
+        </div>
+      </div>
       <div class="acoes">
         <button class="btn" id="btn-lancar">Lançar tarefa no ClickUp</button>
         <button class="btn secundario" id="btn-limpar">Limpar</button>
@@ -186,9 +195,34 @@
 
   function limpar() {
     ["#titulo", "#usuario", "#detalhamento", "#parceiro", "#vencimento", "#periodo", "#responsavel"].forEach((s) => $(s).value = "");
-    $("#origem").value = ""; resetarFap();
+    $("#origem").value = ""; limparAnexos(); resetarFap();
   }
   $("#btn-limpar").onclick = limpar;
+  // Anexos (21/10/2026): vão se somando a cada escolha (ou arrastando), com ✕ para tirar um.
+  let arquivosAnexo = [];
+  function desenharAnexos() {
+    const mb = arquivosAnexo.reduce((s, f) => s + f.size, 0) / 1048576;
+    $("#anexos-lista").innerHTML = arquivosAnexo.length
+      ? arquivosAnexo.map((f, i) => `<div style="font-size:13px;margin:2px 0">📄 ${esc(f.name)} <span class="ajuda">(${(f.size / 1048576).toFixed(1)} MB)</span>
+          <button class="btn secundario pequeno" type="button" data-tirar="${i}" title="Tirar este arquivo">✕</button></div>`).join("")
+        + `<div class="ajuda ${mb > 25 ? "erro" : ""}">${arquivosAnexo.length} arquivo(s) · ${mb.toFixed(1)} MB${mb > 25 ? " — passou de 25 MB" : ""}</div>`
+      : "";
+  }
+  function somarAnexos(lista) {
+    for (const f of lista) if (!arquivosAnexo.some((x) => x.name === f.name && x.size === f.size)) arquivosAnexo.push(f);
+    desenharAnexos();
+  }
+  function limparAnexos() { arquivosAnexo = []; $("#anexos").value = ""; desenharAnexos(); }
+  $("#btn-anexar").onclick = () => $("#anexos").click();
+  $("#anexos").onchange = () => { somarAnexos([...$("#anexos").files]); $("#anexos").value = ""; };
+  $("#anexos-lista").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tirar]"); if (!b) return;
+    arquivosAnexo.splice(+b.dataset.tirar, 1); desenharAnexos();
+  });
+  const area = $("#anexos-area");
+  ["dragenter", "dragover"].forEach((ev) => area.addEventListener(ev, (e) => { e.preventDefault(); area.style.borderColor = "var(--local)"; }));
+  ["dragleave", "drop"].forEach((ev) => area.addEventListener(ev, (e) => { e.preventDefault(); area.style.borderColor = ""; }));
+  area.addEventListener("drop", (e) => somarAnexos([...(e.dataTransfer.files || [])]));
 
   $("#btn-lancar").onclick = async () => {
     const d = {
@@ -196,7 +230,13 @@
       usuario: $("#usuario").value.trim(), detalhamento: $("#detalhamento").value.trim(),
       vencimento: $("#vencimento").value.trim(), periodo: $("#periodo").value.trim(),
     };
-    if (!d.parceiro || !d.origem || !d.titulo || !d.detalhamento) return toast("Parceiro, Origem, Título e Detalhamento são obrigatórios!", "erro");
+    if (!d.parceiro || !d.origem || !d.titulo || !d.usuario || !d.detalhamento) {
+      if (!d.usuario) $("#usuario").focus();
+      return toast("Parceiro, Origem, Título, Usuário cliente e Detalhamento são obrigatórios!", "erro");
+    }
+    const arquivos = [...arquivosAnexo];
+    const totalAnexos = arquivos.reduce((s, f) => s + f.size, 0);
+    if (totalAnexos > 25 * 1024 * 1024) return toast("Os anexos passam de 25 MB no total. Anexe os maiores direto no ClickUp.", "erro");
     if (!opcoes.parceiros.includes(d.parceiro)) { $("#parceiro").focus(); return toast(`O parceiro '${d.parceiro}' não é válido. Selecione um da lista!`, "erro"); }
     const respNome = $("#responsavel").value.trim();
     if (respNome && !mapaMembros[respNome]) { $("#responsavel").focus(); return toast(`Responsável '${respNome}' não encontrado. Selecione da lista ou deixe em branco.`, "erro"); }
@@ -216,13 +256,27 @@
       ${d.usuario ? `<li><b>Usuário:</b> ${esc(d.usuario)}</li>` : ""}
       ${respNome ? `<li><b>Responsável:</b> ${esc(respNome)}</li>` : ""}
       <li><b>Vencimento:</b> ${venc ? esc(d.vencimento) : "sem data (backlog base)"}${d.periodo ? ` · <b>Período:</b> ${esc(d.periodo)}` : ""}</li>
+      ${arquivos.length ? `<li><b>Anexos:</b> ${arquivos.map((f) => esc(f.name)).join(", ")}</li>` : ""}
     </ul>${passado ? `<div class="aviso">O vencimento ${esc(d.vencimento)} já passou.</div>` : ""}`;
-    if (!await confirmar("Lançar esta tarefa no ClickUp?", html, { botao: "Lançar" })) return;
+    // 21/10/2026: campos não obrigatórios que ficaram vazios -> pergunta antes de lançar.
+    const vazios = [
+      !respNome && "5. Responsável / consultor",
+      !d.vencimento && "6. Vencimento (a tarefa entra como \"backlog base\")",
+      !d.periodo && "7. Período",
+      !arquivos.length && "Anexo",
+    ].filter(Boolean);
+    const avisoVazios = vazios.length
+      ? `<div class="aviso erro"><b>Estes campos ficaram vazios:</b><ul>${vazios.map((v) => `<li>${esc(v)}</li>`).join("")}</ul>Deseja lançar a tarefa assim mesmo?</div>`
+      : "";
+    if (!await confirmar(vazios.length ? "Lançar com campos vazios?" : "Lançar esta tarefa no ClickUp?", html + avisoVazios,
+      { botao: vazios.length ? "Lançar assim mesmo" : "Lançar" })) return;
 
     const btn = $("#btn-lancar");
     btn.disabled = true; btn.textContent = "Lançando… aguarde";
     try {
-      const r = await post("/api/lancar", { ...d, fap_id: fap.id, responsavel_id: respNome ? mapaMembros[respNome] : null, confirmar: true });
+      const anexos = [];
+      for (const f of arquivos) anexos.push({ nome: f.name, conteudo_b64: await BPMS.arquivoBase64(f) });
+      const r = await post("/api/lancar", { ...d, anexos, fap_id: fap.id, responsavel_id: respNome ? mapaMembros[respNome] : null, confirmar: true });
       const extra = [`FAP: ${fap.nome}`, respNome && `Responsável: ${respNome}`, r.vencimento && `Vencimento: ${r.vencimento}`, r.periodo && `Período: ${r.periodo}`].filter(Boolean);
       const res = $("#resultado");
       res.innerHTML = `<b>Tarefa '${esc(d.titulo)}' lançada com sucesso!</b><br>${extra.map(esc).join("<br>")}<br>Tag no ClickUp: <b>#${esc(r.task_id)}</b>`
@@ -230,7 +284,7 @@
       res.classList.remove("oculto");
       toast("Tarefa lançada.", "ok");
       ["#titulo", "#usuario", "#detalhamento", "#parceiro", "#vencimento", "#periodo", "#responsavel"].forEach((s) => $(s).value = "");
-      $("#origem").value = ""; resetarFap(); BPMS.atualizarPilula();
+      $("#origem").value = ""; limparAnexos(); resetarFap(); BPMS.atualizarPilula();
     } catch (e) {
       BPMS.informar("Erro ao lançar", `Ocorreu um problema no ClickUp:<br><br>${esc(e.message)}`);
     } finally {

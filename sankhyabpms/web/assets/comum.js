@@ -2,6 +2,8 @@
 "use strict";
 
 const BPMS = (() => {
+  // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
+  const VERSAO = "1.1.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -62,7 +64,7 @@ const BPMS = (() => {
     if (!document.querySelector(".assinatura")) {
       const rodape = document.createElement("footer");
       rodape.className = "assinatura";
-      rodape.textContent = "by MarceloFragoso";
+      rodape.textContent = `by MarceloFragoso · v${VERSAO}`;
       rodape.style.cssText = "text-align:center;color:var(--suave);font-size:12px;padding:18px 0 22px;opacity:.85";
       document.body.append(rodape);
     }

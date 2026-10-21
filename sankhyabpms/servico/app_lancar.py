@@ -64,6 +64,52 @@ def periodo(req):
     return 200, {"periodo": _motor().interpretar_periodo(req.query.get("texto", ""))}
 
 
+LIMITE_ANEXOS = 25 * 1024 * 1024  # soma dos arquivos
+
+
+def _ler_anexos(lista):
+    """[{nome, conteudo_b64}] da página -> [(nome, bytes)] (21/10/2026: anexar arquivo na tarefa)."""
+    import base64
+    import re
+    saida, total = [], 0
+    for a in lista or []:
+        nome = re.sub(r'[\\/:*?"<>|]', "_", os.path.basename(str(a.get("nome") or "arquivo")))[:150]
+        try:
+            dados = base64.b64decode(a.get("conteudo_b64") or "", validate=True)
+        except ValueError:
+            raise ErroUsuario(f"Anexo '{nome}' inválido. Selecione o arquivo de novo.")
+        total += len(dados)
+        if total > LIMITE_ANEXOS:
+            raise ErroUsuario("Os anexos passam de 25 MB no total. Anexe os maiores direto no ClickUp.")
+        if dados:
+            saida.append((nome, dados))
+    return saida
+
+
+def _enviar_anexos(task_id, anexos):
+    """Anexa os arquivos na tarefa (API oficial: POST /task/{id}/attachment). Devolve avisos."""
+    import requests
+    from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
+    ok, falhas = [], []
+    for nome, dados in anexos:
+        try:
+            r = requests.post(f"{CLICKUP_API}/task/{task_id}/attachment",
+                              headers={"Authorization": CLICKUP_HEADERS["Authorization"]},
+                              files={"attachment": (nome, dados)}, timeout=120)
+            if r.status_code in (200, 201):
+                ok.append(nome)
+            else:
+                falhas.append(f"{nome} (HTTP {r.status_code})")
+        except requests.RequestException as e:
+            falhas.append(f"{nome} ({e})")
+    avisos = []
+    if ok:
+        avisos.append(f"📎 {len(ok)} anexo(s) incluído(s): {', '.join(ok)}")
+    if falhas:
+        avisos.append(f"⚠ Anexo(s) que NÃO entraram (anexe à mão no ClickUp): {', '.join(falhas)}")
+    return avisos
+
+
 @rota("POST", "/api/lancar")
 def lancar(req):
     exigir_confirmacao(req)
@@ -75,8 +121,9 @@ def lancar(req):
     usuario = (c.get("usuario") or "").strip()
     detalhamento = (c.get("detalhamento") or "").strip()
 
-    if not parceiro or not origem or not titulo or not detalhamento:
-        raise ErroUsuario("Parceiro, Origem, Título e Detalhamento são obrigatórios!")
+    if not parceiro or not origem or not titulo or not detalhamento or not usuario:
+        raise ErroUsuario("Parceiro, Origem, Título, Usuário cliente e Detalhamento são obrigatórios!")
+    anexos = _ler_anexos(c.get("anexos"))
     if parceiro not in m.OPCOES_PARCEIRO:
         raise ErroUsuario(f"O parceiro '{parceiro}' não é válido. Selecione um da lista!")
     if origem not in m.OPCOES_ORIGEM:
@@ -102,6 +149,8 @@ def lancar(req):
         origem=origem, responsavel_id=responsavel_id, data_vencimento=data_venc, periodo=periodo,
         list_id=list_id, avisos=avisos,
     )
+    if anexos:
+        avisos.extend(_enviar_anexos(task_id, anexos))
     gravar_json_dados(ARQ_MEMORIA, {"parceiro": parceiro, "origem": origem, "titulo": titulo,
                                     "usuario": usuario, "detalhamento": detalhamento})
     marcar_uso("lancar")
