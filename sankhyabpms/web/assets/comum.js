@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.1.0";
+  const VERSAO = "1.2.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -14,6 +14,7 @@ const BPMS = (() => {
     { id: "agenda", href: "agenda.html", rotulo: "Agenda semanal" },
     { id: "atendimentos", href: "atendimentos.html", rotulo: "Atendimentos WhatsApp" },
     { id: "permissoes", href: "permissoes.html", rotulo: "Permissões ClickUp" },
+    { id: "backlog", href: "backlog.html", rotulo: "Backlog Base" },
   ];
 
   // ------------------------------------------------------------ util
@@ -133,13 +134,18 @@ const BPMS = (() => {
     try {
       const s = await get("/api/status");
       ultimoStatus = s;
-      if (s.ativa) { p.className = "pilula rodando"; p.textContent = `rodando: ${s.ativa.titulo}`; }
+      const ativas = s.ativas || (s.ativa ? [s.ativa] : []);
+      if (ativas.length > 1) { p.className = "pilula rodando"; p.textContent = `${ativas.length} processos rodando: ${ativas.map((a) => a.titulo).join(" · ")}`; }
+      else if (ativas.length) { p.className = "pilula rodando"; p.textContent = `rodando: ${ativas[0].titulo}`; }
       else if (!s.motores_encontrados) { p.className = "pilula erro"; p.textContent = "pasta dos motores não encontrada"; }
       else { p.className = "pilula ok"; p.textContent = "serviço local ok"; }
       p.title = p.textContent;  // em tela estreita a pílula vira só um ponto colorido
       $$("[data-ultimo-uso]").forEach((el) => {
         const v = s.ultimo_uso[el.dataset.ultimoUso];
-        el.textContent = v ? `último uso ${v}` : "";
+        // 22/10/2026: também a data da última atualização do módulo.
+        const at = (s.atualizado || {})[el.dataset.ultimoUso];
+        el.textContent = [v && `último uso ${v}`, at && `atualizado em ${at.slice(0, 10)}`].filter(Boolean).join(" · ");
+        if (at) el.title = `Módulo atualizado em ${at}`;
       });
       return s;
     } catch (e) {
@@ -315,9 +321,11 @@ const BPMS = (() => {
   /** Se há tarefa destes tipos rodando (ex.: página recarregada), volta a acompanhá-la. */
   async function retomar(tipos, el, aoTerminar, aoRetomar) {
     const s = ultimoStatus || (await atualizarPilula());
-    if (s && s.ativa && tipos.includes(s.ativa.tipo)) {
-      aoRetomar && aoRetomar(s.ativa);
-      return acompanhar(s.ativa.id, el, aoTerminar);
+    // v1.2.0: com vários processos rodando, retoma o desta tela (se houver).
+    const t = s && (s.ativas || (s.ativa ? [s.ativa] : [])).slice().reverse().find((a) => tipos.includes(a.tipo));
+    if (t) {
+      aoRetomar && aoRetomar(t);
+      return acompanhar(t.id, el, aoTerminar);
     }
     return null;
   }

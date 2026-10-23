@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backlog Base</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 14px; }
+  .kpi { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 10px 14px; }
+  .kpi b { display: block; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--suave); font-size: 12px; }
+  .kpi.alerta b { color: var(--perigo); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--linha); background: var(--card); color: var(--texto); border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+  .chip.ativo { border-color: var(--local); background: var(--local-claro); color: var(--local); font-weight: 700; }
+  .cor { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .caminho { color: var(--suave); font-size: 11px; text-transform: uppercase; }
+  td a.tarefa { color: var(--texto); font-weight: 600; text-decoration: none; }
+  td a.tarefa:hover { color: var(--local); text-decoration: underline; }
+  tr.grupo td { background: var(--bg); font-weight: 700; position: sticky; top: 30px; }
+  .vencida { color: var(--perigo); font-weight: 700; }
+  .velha { color: var(--perigo); font-weight: 700; }
+  .tabela-caixa { max-height: 640px; }
+  .status-filtro { position: relative; }
+  .status-filtro summary { list-style: none; cursor: pointer; border: 1px solid var(--campo-borda); background: var(--campo); border-radius: 8px; padding: 7px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: capitalize; }
+  .status-filtro summary::-webkit-details-marker { display: none; }
+  .status-filtro .opcoes-status { position: absolute; z-index: 20; top: calc(100% + 2px); left: 0; min-width: 240px; background: var(--card); border: 1px solid var(--linha); border-radius: 8px; box-shadow: var(--sombra); padding: 6px; max-height: 320px; overflow: auto; }
+  .opcoes-status label { display: flex; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-weight: 400; text-transform: capitalize; }
+  .opcoes-status label:hover { background: var(--bg); }
+  .bolinha { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="backlog.titulo">Backlog Base</h1>
+      <p data-texto="backlog.subtitulo">Tarefas do PMO BP-MS por status (padrão: Backlog Base) · só leitura, direto do ClickUp</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="backlog"></span>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section class="card faixa">
+    <div class="campos">
+      <div class="campo c3"><label>Status</label>
+        <details class="status-filtro" id="f-status"><summary id="f-status-resumo">backlog base</summary><div class="opcoes-status" id="f-status-opcoes"></div></details></div>
+      <div class="campo c3"><label for="busca">Buscar</label><input id="busca" placeholder="Nome, pasta, lista ou usuário cliente"></div>
+      <div class="campo c3"><label for="f-parceiro">Parceiro</label><select id="f-parceiro"></select></div>
+      <div class="campo c3"><label for="f-resp">Responsável</label><select id="f-resp"></select></div>
+      <div class="campo"><div class="acoes" style="margin:0">
+        <label class="checar"><input type="checkbox" id="agrupar" checked> Agrupar por Agendamento</label>
+        <span class="espaco"></span>
+        <button class="btn secundario" id="btn-atualizar" type="button">↻ Atualizar</button>
+        <button class="btn" id="btn-relatorio" type="button">📄 Relatório HTML5</button></div></div>
+    </div>
+    <div class="chips" id="chips" style="margin-top:12px"></div>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr id="cabecalho-tabela">
+          <th data-ordem="nome">Nome</th>
+          <th data-ordem="responsavel">Responsável</th><th data-ordem="criada">Data criada</th><th data-ordem="dias" class="centro">Dias na fila</th>
+          <th data-ordem="prioridade">Prioridade</th><th data-ordem="parceiro">Parceiro</th>
+          <th data-ordem="usuario">Usuário cliente</th><th data-ordem="vencimento">Vencimento</th>
+        </tr></thead>
+        <tbody id="corpo"><tr><td colspan="8" class="vazio-tabela">Carregando do ClickUp…</td></tr></tbody>
+      </table>
+    </div>
+    <span class="ajuda" id="rodape-tabela" style="font-size:12px;color:var(--suave)"></span>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, esc, normalizar, toast } = BPMS;
+  BPMS.montarTopo("backlog");
+  const ORDEM = ["Agendar", "Previsto", "Aguardando aprovação", "Confirmado", "Service Desk"];
+  const SEM = "(sem agendamento)";
+  const COLS = 8;
+  let tarefas = [], filtroAg = "", ordem = { campo: "dias", dir: -1 }, statusEscolhidos = ["backlog base"];
+
+  // Ordenação por coluna (clique no título; 2º clique inverte). Vazios sempre no fim.
+  const CHAVE = {
+    nome: (t) => normalizar(t.nome),
+    responsavel: (t) => t.responsaveis.length ? normalizar(t.responsaveis.join(", ")) : null,
+    criada: (t) => t.criada_ms || null,
+    dias: (t) => t.dias_fila,
+    prioridade: (t) => t.prioridade ? t.prioridade_ordem : null,
+    parceiro: (t) => t.campos.Parceiro ? normalizar(t.campos.Parceiro) : null,
+    usuario: (t) => t.campos["Usuário cliente"] ? normalizar(t.campos["Usuário cliente"]) : null,
+    vencimento: (t) => t.vencimento_ms || null,
+  };
+  const vazio = (x) => x == null || x === "";
+  function ordenar(lista) {
+    const f = CHAVE[ordem.campo];
+    return lista.slice().sort((a, b) => {
+      const x = f(a), y = f(b);
+      if (vazio(x)) return vazio(y) ? 0 : 1;
+      if (vazio(y)) return -1;
+      return (x < y ? -1 : x > y ? 1 : 0) * ordem.dir;
+    });
+  }
+  function marcarCabecalho() {
+    BPMS.$$("#cabecalho-tabela th").forEach((th) => {
+      th.classList.toggle("asc", th.dataset.ordem === ordem.campo && ordem.dir === 1);
+      th.classList.toggle("desc", th.dataset.ordem === ordem.campo && ordem.dir === -1);
+    });
+  }
+
+  const ag = (t) => t.campos.Agendamento || SEM;
+  const cor = (texto, c) => texto ? `<span class="cor" style="background:${esc(c || "#6b7280")}">${esc(texto)}</span>` : "–";
+  const opcoes = (lista, todos) => `<option value="">${todos}</option>` + lista.map((v) => `<option>${esc(v)}</option>`).join("");
+  const unicos = (f) => [...new Set(tarefas.flatMap(f).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  function filtradas(ignorarAg = false) {
+    const q = normalizar($("#busca").value), p = $("#f-parceiro").value, r = $("#f-resp").value;
+    return tarefas.filter((t) =>
+      (ignorarAg || !filtroAg || ag(t) === filtroAg) &&
+      (!p || t.campos.Parceiro === p) &&
+      (!r || (r === "(sem responsável)" ? !t.responsaveis.length : t.responsaveis.includes(r))) &&
+      (!q || normalizar([t.nome, t.pasta, t.lista, t.campos["Usuário cliente"]].join(" ")).includes(q)));
+  }
+
+  function kpis() {
+    const v = filtradas(true);
+    const dias = v.map((t) => t.dias_fila ?? 0);
+    const media = dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : 0;
+    const k = [
+      ["Tarefas", v.length, ""],
+      ["Sem responsável", v.filter((t) => !t.responsaveis.length).length, "alerta"],
+      ["Vencidas", v.filter((t) => t.vencida).length, "alerta"],
+      ["Média de dias na fila", media, ""],
+      ["Mais antiga (dias)", dias.length ? Math.max(...dias) : 0, ""],
+    ];
+    $("#kpis").innerHTML = k.map(([r, n, c]) => `<div class="kpi ${n && c ? c : ""}"><b>${n}</b><span>${r}</span></div>`).join("");
+    const cont = {};
+    v.forEach((t) => { cont[ag(t)] = (cont[ag(t)] || 0) + 1; });
+    const grupos = [...ORDEM, SEM].filter((g) => cont[g]).concat(Object.keys(cont).filter((g) => !ORDEM.includes(g) && g !== SEM));
+    $("#chips").innerHTML = `<button class="chip ${filtroAg ? "" : "ativo"}" data-ag="">Todos · ${v.length}</button>` +
+      grupos.map((g) => `<button class="chip ${filtroAg === g ? "ativo" : ""}" data-ag="${esc(g)}">${esc(g)} · ${cont[g]}</button>`).join("");
+    return grupos;
+  }
+
+  function desenhar() {
+    const grupos = kpis();
+    const v = filtradas();
+    marcarCabecalho();
+    if (!v.length) { $("#corpo").innerHTML = `<tr><td colspan="${COLS}" class="vazio-tabela">Nenhuma tarefa com esses filtros.</td></tr>`; return; }
+    $("#corpo").innerHTML = linhas(grupos, v);
+  }
+
+  function linhas(grupos, v) {
+    let html = "";
+    const agrupar = $("#agrupar").checked;
+    for (const g of (agrupar ? grupos : [null])) {
+      const doGrupo = ordenar(agrupar ? v.filter((t) => ag(t) === g) : v);
+      if (!doGrupo.length) continue;
+      const corG = doGrupo.find((t) => t.cores.Agendamento)?.cores.Agendamento;
+      if (agrupar) html += `<tr class="grupo"><td colspan="${COLS}">${cor(g, corG)} &nbsp;${doGrupo.length}</td></tr>`;
+      html += doGrupo.map((t) => `<tr>
+        <td style="min-width:280px"><div class="caminho">${esc(t.pasta)} / ${esc(t.lista)}</div>
+          <a class="tarefa" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.nome)}</a></td>
+        <td>${t.responsaveis.length ? esc(t.responsaveis.join(", ")) : '<span style="color:var(--suave)">–</span>'}</td>
+        <td>${esc(t.criada)}</td>
+        <td class="centro ${(t.dias_fila ?? 0) > 30 ? "velha" : ""}">${t.dias_fila ?? "–"}</td>
+        <td>${t.prioridade ? `<span style="color:${esc(t.prioridade_cor)}">⚑</span> ${esc(t.prioridade)}` : "–"}</td>
+        <td>${cor(t.campos.Parceiro, t.cores.Parceiro)}</td>
+        <td>${esc(t.campos["Usuário cliente"] || "–")}</td>
+        <td class="${t.vencida ? "vencida" : ""}">${esc(t.vencimento || "–")}</td></tr>`).join("");
+    }
+    return html;
+  }
+
+  // Relatório HTML5 (22/10/2026): arquivo único, com o que está na tela agora
+  // (status, filtros, agrupamento e ordenação), para guardar ou enviar.
+  let atualizadoEm = "";
+  function relatorio() {
+    const grupos = kpis(), v = filtradas();
+    if (!v.length) return toast("Nenhuma tarefa com esses filtros para o relatório.", "erro");
+    const rotulos = { nome: "Nome", responsavel: "Responsável", criada: "Data criada", dias: "Dias na fila", prioridade: "Prioridade",
+      parceiro: "Parceiro", usuario: "Usuário cliente", vencimento: "Vencimento" };
+    const filtros = [
+      ["Status", statusEscolhidos.join(", ")],
+      ["Agendamento", filtroAg || "Todos"],
+      ["Parceiro", $("#f-parceiro").value || "Todos"],
+      ["Responsável", $("#f-resp").value || "Todos"],
+      $("#busca").value.trim() ? ["Busca", $("#busca").value.trim()] : null,
+      ["Ordenado por", `${rotulos[ordem.campo]} (${ordem.dir === 1 ? "crescente" : "decrescente"})`],
+    ].filter(Boolean);
+    const porParceiro = {};
+    v.forEach((t) => {
+      const k = t.campos.Parceiro || "(sem parceiro)";
+      const e = (porParceiro[k] ||= { n: 0, sem: 0, venc: 0, dias: 0, cor: t.cores.Parceiro });
+      e.n++; e.dias += t.dias_fila ?? 0; if (!t.responsaveis.length) e.sem++; if (t.vencida) e.venc++;
+    });
+    const resumo = Object.entries(porParceiro).sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0], "pt-BR"))
+      .map(([k, e]) => `<tr><td>${cor(k, e.cor)}</td><td class="centro">${e.n}</td><td class="centro">${e.sem || "–"}</td>
+        <td class="centro">${e.venc || "–"}</td><td class="centro">${Math.round(e.dias / e.n)}</td></tr>`).join("");
+    const agora = new Date();
+    const titulo = `Backlog Base — ${agora.toLocaleDateString("pt-BR")}`;
+    const doc = `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(titulo)}</title>
+<style>
+:root { --bg:#f3f6f4; --card:#fff; --linha:#d7e0db; --texto:#14211b; --suave:#5b6b63; --local:#0a7a52; --perigo:#b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg:#101714; --card:#18221d; --linha:#2a3832; --texto:#e3ece7; --suave:#9aaba2; --local:#2fb37d; --perigo:#f2766b; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--texto); font:14px/1.45 "Segoe UI", system-ui, Roboto, Arial, sans-serif; }
+.pagina { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
+h1 { margin:0; font-size:24px; } h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--suave); margin:22px 0 8px; }
+.sub { color:var(--suave); margin:2px 0 16px; }
+.kpis { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); }
+.kpi { background:var(--card); border:1px solid var(--linha); border-radius:10px; padding:10px 14px; }
+.kpi b { display:block; font-size:26px; font-variant-numeric:tabular-nums; } .kpi span { color:var(--suave); font-size:12px; }
+.kpi.alerta b { color:var(--perigo); }
+.filtros { display:flex; flex-wrap:wrap; gap:6px 18px; background:var(--card); border:1px solid var(--linha); border-radius:10px; padding:10px 14px; margin-top:12px; font-size:13px; }
+.filtros b { color:var(--suave); font-weight:600; }
+.caixa { overflow-x:auto; background:var(--card); border:1px solid var(--linha); border-radius:10px; }
+table { border-collapse:collapse; width:100%; font-size:13px; }
+th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--linha); vertical-align:top; }
+th { font-size:12px; color:var(--suave); white-space:nowrap; } .centro { text-align:center; }
+tr.grupo td { background:var(--bg); font-weight:700; }
+.cor { display:inline-block; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:600; color:#fff; white-space:nowrap; }
+.caminho { color:var(--suave); font-size:11px; text-transform:uppercase; }
+a.tarefa { color:var(--texto); font-weight:600; text-decoration:none; } a.tarefa:hover { color:var(--local); text-decoration:underline; }
+.vencida, .velha { color:var(--perigo); font-weight:700; }
+.rodape { color:var(--suave); font-size:12px; margin-top:14px; }
+@media print { body { background:#fff; } .pagina { max-width:none; padding:0; } tr { break-inside:avoid; } }
+</style></head><body><main class="pagina">
+<h1>Backlog Base</h1>
+<p class="sub">PMO BP-MS · dados do ClickUp de ${esc(atualizadoEm)} · gerado em ${agora.toLocaleString("pt-BR")}</p>
+${$("#kpis").outerHTML}
+<div class="filtros">${filtros.map(([k, x]) => `<span><b>${esc(k)}:</b> ${esc(x)}</span>`).join("")}</div>
+<h2>Por parceiro</h2>
+<div class="caixa"><table><thead><tr><th>Parceiro</th><th class="centro">Tarefas</th><th class="centro">Sem responsável</th>
+<th class="centro">Vencidas</th><th class="centro">Média de dias na fila</th></tr></thead><tbody>${resumo}</tbody></table></div>
+<h2>Tarefas (${v.length})</h2>
+<div class="caixa"><table><thead><tr><th>Nome</th><th>Responsável</th><th>Data criada</th><th class="centro">Dias na fila</th>
+<th>Prioridade</th><th>Parceiro</th><th>Usuário cliente</th><th>Vencimento</th></tr></thead>
+<tbody>${linhas(grupos, v)}</tbody></table></div>
+<p class="rodape">Clique no nome da tarefa para abrir no ClickUp · mais de 30 dias na fila em vermelho · Central BP-MS by MarceloFragoso</p>
+</main></body></html>`;
+    const url = URL.createObjectURL(new Blob([doc], { type: "text/html;charset=utf-8" }));
+    const a = document.createElement("a");
+    const p2 = (n) => String(n).padStart(2, "0");
+    a.href = url;
+    a.download = `Backlog_Base_${agora.getFullYear()}-${p2(agora.getMonth() + 1)}-${p2(agora.getDate())}_${p2(agora.getHours())}${p2(agora.getMinutes())}.html`;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast(`Relatório gerado: ${a.download}`, "ok");
+  }
+
+  async function carregar() {
+    $("#btn-atualizar").disabled = true;
+    try {
+      const r = await get("/api/backlog/tarefas?status=" + encodeURIComponent(statusEscolhidos.join(",")));
+      tarefas = r.tarefas;
+      atualizadoEm = r.atualizado;
+      const p = $("#f-parceiro").value, s = $("#f-resp").value;
+      $("#f-parceiro").innerHTML = opcoes(unicos((t) => [t.campos.Parceiro]), "Todos");
+      $("#f-resp").innerHTML = opcoes(["(sem responsável)", ...unicos((t) => t.responsaveis)], "Todos");
+      $("#f-parceiro").value = p; $("#f-resp").value = s;
+      $("#rodape-tabela").textContent = `Atualizado em ${r.atualizado} · clique no nome para abrir no ClickUp · clique no título da coluna para ordenar · mais de 30 dias na fila em vermelho`;
+      desenhar();
+    } catch (e) {
+      toast(e.message, "erro");
+      $("#corpo").innerHTML = `<tr><td colspan="${COLS}" class="vazio-tabela">${esc(e.message)}</td></tr>`;
+    } finally { $("#btn-atualizar").disabled = false; }
+  }
+
+  $("#chips").onclick = (e) => { const b = e.target.closest(".chip"); if (b) { filtroAg = b.dataset.ag; desenhar(); } };
+  $("#busca").oninput = desenhar;
+  $("#f-parceiro").onchange = desenhar;
+  $("#f-resp").onchange = desenhar;
+  $("#btn-atualizar").onclick = carregar;
+  $("#btn-relatorio").onclick = relatorio;
+  $("#agrupar").onchange = desenhar;
+  $("#cabecalho-tabela").onclick = (e) => {
+    const th = e.target.closest("th[data-ordem]"); if (!th) return;
+    const c = th.dataset.ordem;
+    ordem = ordem.campo === c ? { campo: c, dir: -ordem.dir } : { campo: c, dir: ["dias", "criada", "vencimento"].includes(c) ? -1 : 1 };
+    desenhar();
+  };
+
+  // Filtro por status do ClickUp (vários): ao fechar a lista, recarrega se mudou.
+  let statusAoAbrir = "";
+  const resumoStatus = () => { $("#f-status-resumo").textContent = statusEscolhidos.length ? statusEscolhidos.join(", ") : "(escolha um status)"; };
+  async function carregarStatus() {
+    try {
+      const r = await get("/api/backlog/status");
+      $("#f-status-opcoes").innerHTML = r.status.map((s) => `<label><input type="checkbox" value="${esc(s.nome)}" ${statusEscolhidos.includes(s.nome) ? "checked" : ""}>
+        <span class="bolinha" style="background:${esc(s.cor || "#888")}"></span>${esc(s.nome)}</label>`).join("");
+    } catch (e) { toast(e.message, "erro"); }
+  }
+  $("#f-status-opcoes").onchange = () => {
+    statusEscolhidos = BPMS.$$("#f-status-opcoes input:checked").map((i) => i.value);
+    resumoStatus();
+  };
+  $("#f-status").ontoggle = () => {
+    if ($("#f-status").open) { statusAoAbrir = statusEscolhidos.join(","); return; }
+    if (!statusEscolhidos.length) { toast("Escolha pelo menos um status.", "erro"); return; }
+    if (statusEscolhidos.join(",") !== statusAoAbrir) { filtroAg = ""; carregar(); }
+  };
+  document.addEventListener("click", (e) => { if ($("#f-status").open && !e.target.closest("#f-status")) $("#f-status").open = false; });
+  resumoStatus();
+  carregarStatus();
+  carregar();
+})();
+</script>
+</body>
+</html>

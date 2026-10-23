@@ -38,6 +38,14 @@
           </div>
           <span class="ajuda" id="fap-info"></span>
         </div>
+        <div class="campo oculto" id="hc-caixa">
+          <label for="hc-pai">Tarefa pai (parceiro e código) <span class="ajuda" style="color:var(--perigo)">*</span></label>
+          <input id="hc-pai" placeholder="digite o nome ou o código do parceiro">
+          <label for="hc-apelido" style="margin-top:6px">Nome do parceiro no título</label>
+          <input id="hc-apelido" placeholder="ex.: Tratalyx">
+
+          <span class="ajuda" id="hc-info">X-Horas Cruzadas: a tarefa nova entra como subtarefa da tarefa pai escolhida. O título começa sempre com "lista (parceiro) - ", ex.: "Filial DC (Tratalyx) - …". O nome curto fica guardado para a próxima vez.</span>
+        </div>
         <div class="campo c6">
           <label for="origem">2. Origem da demanda <span class="ajuda" style="color:var(--perigo)">*</span></label>
           <select id="origem"><option value=""></option></select>
@@ -117,8 +125,55 @@
     buscaResp.definirOpcoes(Object.keys(mapaMembros));
   }
 
+  // X-Horas Cruzadas (22/10/2026): no lugar da FAP, escolhe pasta > lista > tarefa pai.
+  const HC = "X-Horas Cruzadas";
+  // 22/10/2026 (ajuste): só as tarefas pai -- já trazem parceiro e código; a lista vem junto.
+  // Busca por nome ou código do parceiro; mostra só "Nome (código)" -- pasta e lista ficam por trás.
+  let hcPais = null, buscaHC = null;
+  async function mostrarHC(sim) {
+    $("#hc-caixa").classList.toggle("oculto", !sim);
+    $("#fap").closest(".campo").classList.toggle("oculto", sim);
+    if (!sim || hcPais) return;
+    const info = $("#hc-info"), campo = $("#hc-pai");
+    if (!buscaHC) buscaHC = busca(campo, []);
+    campo.disabled = true; campo.placeholder = "buscando tarefas pai…";
+    try {
+      const r = await get("/api/lancar/hc/pais");
+      hcPais = r.pais;
+      buscaHC.definirOpcoes(hcPais.map((t) => t.nome));
+      campo.disabled = !hcPais.length;
+      campo.placeholder = hcPais.length ? "digite o nome ou o código do parceiro" : "nenhuma tarefa pai aberta";
+    } catch (e) { info.className = "ajuda erro"; info.textContent = "Erro ao buscar as tarefas pai: " + e.message; }
+  }
+
+  // 23/10/2026: ao escolher a tarefa pai, preenche o nome curto do parceiro (editável)
+  const preencherApelido = () => {
+    const t = (hcPais || []).find((x) => x.nome === $("#hc-pai").value.trim());
+    if (t) $("#hc-apelido").value = t.apelido || "";
+  };
+  $("#hc-pai").addEventListener("change", preencherApelido);
+  $("#hc-pai").addEventListener("input", preencherApelido);
+
+  // X-Interno (22/10/2026): vai sempre para a lista Adm / Particular, na subtarefa do mês.
+  const INTERNO = "X-Interno";
+  let listaInterno = null;
+  async function mostrarInterno(sim) {
+    const info = $("#fap-info"), sel = $("#fap");
+    if (!sim) return;
+    sel.innerHTML = "<option value=\"\">(Adm / Particular)</option>"; sel.disabled = true;
+    info.className = "ajuda ok";
+    try {
+      if (!listaInterno) listaInterno = (await get("/api/lancar/interno")).lista;
+      sel.innerHTML = `<option value="">${esc(listaInterno)}</option>`;
+      info.textContent = `(X-Interno: lista ${listaInterno}, na subtarefa do mês)`;
+    } catch (e) { info.className = "ajuda erro"; info.textContent = e.message; }
+  }
+
   async function carregarFaps(parceiro, forcar = false) {
     fapParceiro = parceiro; faps = [];
+    if (parceiro === HC) { mostrarHC(true); return; }
+    mostrarHC(false);
+    if (parceiro === INTERNO) { mostrarInterno(true); return; }
     const sel = $("#fap"), info = $("#fap-info");
     sel.innerHTML = "<option>(buscando FAPs…)</option>"; sel.disabled = true;
     info.className = "ajuda"; info.textContent = "";
@@ -144,7 +199,7 @@
     }
   }
   function resetarFap() {
-    fapParceiro = null; faps = [];
+    fapParceiro = null; faps = []; mostrarHC(false); $("#hc-pai").value = ""; $("#hc-apelido").value = "";
     $("#fap").innerHTML = "<option value=\"\">(selecione o parceiro)</option>"; $("#fap").disabled = true;
     $("#fap-info").textContent = "";
   }
@@ -240,10 +295,27 @@
     if (!opcoes.parceiros.includes(d.parceiro)) { $("#parceiro").focus(); return toast(`O parceiro '${d.parceiro}' não é válido. Selecione um da lista!`, "erro"); }
     const respNome = $("#responsavel").value.trim();
     if (respNome && !mapaMembros[respNome]) { $("#responsavel").focus(); return toast(`Responsável '${respNome}' não encontrado. Selecione da lista ou deixe em branco.`, "erro"); }
-    if (fapParceiro !== d.parceiro || !faps.length) return toast("Aguarde carregar as FAPs do parceiro (ou confira se ele tem FAP avulso ativa).", "erro");
-    const fapId = $("#fap").value;
-    const fap = faps.find((f) => String(f.id) === fapId);
-    if (!fap) { $("#fap").focus(); return toast(`'${d.parceiro}' tem ${faps.length} FAPs avulso ativas. Selecione em qual delas lançar.`, "erro"); }
+    let fap, destinoHC = null;
+    if (d.parceiro === HC) {
+      const pai = $("#hc-pai");
+      const t = (hcPais || []).find((x) => x.nome === pai.value.trim());
+      if (!t) { pai.focus(); return toast("X-Horas Cruzadas: escolha a tarefa pai da lista (busque pelo nome ou código do parceiro).", "erro"); }
+      destinoHC = { lista: t.lista_id, pai: t.id, texto: t.nome };
+      fap = { id: "", nome: `${t.lista} › ${destinoHC.texto}` };
+      // 23/10/2026: título = "<lista> (<parceiro>) - <título>" (o serviço monta igual)
+      const apelido = $("#hc-apelido").value.trim() || t.apelido;
+      d.hc_apelido = apelido;
+      const prefixo = `${t.lista.trim()} (${apelido}) - `;
+      if (!d.titulo.toLowerCase().startsWith(prefixo.toLowerCase())) d.titulo = prefixo + d.titulo;
+    } else if (d.parceiro === INTERNO) {
+      if (!listaInterno) return toast("Aguarde carregar a lista do X-Interno.", "erro");
+      fap = { id: "", nome: `${listaInterno} (subtarefa do mês)` };
+    } else {
+      if (fapParceiro !== d.parceiro || !faps.length) return toast("Aguarde carregar as FAPs do parceiro (ou confira se ele tem FAP avulso ativa).", "erro");
+      const fapId = $("#fap").value;
+      fap = faps.find((f) => String(f.id) === fapId);
+      if (!fap) { $("#fap").focus(); return toast(`'${d.parceiro}' tem ${faps.length} FAPs avulso ativas. Selecione em qual delas lançar.`, "erro"); }
+    }
     let venc = null;
     if (d.vencimento) { venc = dataValida(d.vencimento); if (!venc) { $("#vencimento").focus(); return toast("Data de vencimento inválida. Use dd/mm/aaaa ou deixe em branco.", "erro"); } }
     if (d.periodo && !venc) { $("#vencimento").focus(); return toast("Período preenchido sem data. Informe o vencimento (dia do atendimento) ou apague o período.", "erro"); }
@@ -251,8 +323,8 @@
     const passado = venc && venc < hoje;
 
     const html = `<ul>
-      <li><b>Parceiro:</b> ${esc(d.parceiro)} — <b>FAP:</b> ${esc(fap.nome)}</li>
-      <li><b>Origem:</b> ${esc(d.origem)}</li><li><b>Título:</b> ${esc(d.titulo)}</li>
+      <li><b>Parceiro:</b> ${esc(d.parceiro)} — <b>${destinoHC ? "Destino" : "FAP"}:</b> ${esc(fap.nome)}</li>
+      <li><b>Origem:</b> ${esc(d.origem)}</li><li><b>Título${destinoHC ? " no ClickUp" : ""}:</b> ${esc(d.titulo)}</li>
       ${d.usuario ? `<li><b>Usuário:</b> ${esc(d.usuario)}</li>` : ""}
       ${respNome ? `<li><b>Responsável:</b> ${esc(respNome)}</li>` : ""}
       <li><b>Vencimento:</b> ${venc ? esc(d.vencimento) : "sem data (backlog base)"}${d.periodo ? ` · <b>Período:</b> ${esc(d.periodo)}` : ""}</li>
@@ -276,8 +348,9 @@
     try {
       const anexos = [];
       for (const f of arquivos) anexos.push({ nome: f.name, conteudo_b64: await BPMS.arquivoBase64(f) });
-      const r = await post("/api/lancar", { ...d, anexos, fap_id: fap.id, responsavel_id: respNome ? mapaMembros[respNome] : null, confirmar: true });
-      const extra = [`FAP: ${fap.nome}`, respNome && `Responsável: ${respNome}`, r.vencimento && `Vencimento: ${r.vencimento}`, r.periodo && `Período: ${r.periodo}`].filter(Boolean);
+      const r = await post("/api/lancar", { ...d, anexos, fap_id: fap.id, hc_lista_id: destinoHC ? destinoHC.lista : null,
+        hc_pai_id: destinoHC ? destinoHC.pai : null, responsavel_id: respNome ? mapaMembros[respNome] : null, confirmar: true });
+      const extra = [`${destinoHC ? "Destino" : "FAP"}: ${fap.nome}`, respNome && `Responsável: ${respNome}`, r.vencimento && `Vencimento: ${r.vencimento}`, r.periodo && `Período: ${r.periodo}`].filter(Boolean);
       const res = $("#resultado");
       res.innerHTML = `<b>Tarefa '${esc(d.titulo)}' lançada com sucesso!</b><br>${extra.map(esc).join("<br>")}<br>Tag no ClickUp: <b>#${esc(r.task_id)}</b>`
         + (r.avisos.length ? `<br><br>${r.avisos.map(esc).join("<br>")}` : "");

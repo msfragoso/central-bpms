@@ -151,12 +151,16 @@ def executar(req):
     if valor_modelo not in [v for v, _ in ui.MODELOS_FILTRO_OPCOES]:
         raise ErroUsuario("Modelo de projetos inválido.")
     modelo_filtro = ui._resolver_modelo_filtro(valor_modelo)
-    consultor = None
-    cid = str(req.corpo.get("consultor") or "").strip()
-    if cid:
-        consultor = next((c for c in _consultores() if c["id"] == cid), None)
-        if not consultor:
-            raise ErroUsuario("Consultor não encontrado na lista do ClickUp. Atualize a página e escolha de novo.")
+    # 23/10/2026: vários consultores ("consultores": [ids]); "consultor" (um id) continua valendo
+    ids = req.corpo.get("consultores")
+    if not isinstance(ids, list):
+        ids = [req.corpo.get("consultor")]
+    ids = [str(x).strip() for x in ids if str(x or "").strip()]
+    todos = {c["id"]: c for c in _consultores()} if ids else {}
+    faltam = [x for x in ids if x not in todos]
+    if faltam:
+        raise ErroUsuario("Consultor não encontrado na lista do ClickUp. Atualize a página e escolha de novo.")
+    consultor = [todos[x] for x in dict.fromkeys(ids)] or None
 
     def trabalho(t):
         m = _modulo_main()
@@ -176,7 +180,7 @@ def executar(req):
                     "para cadastrar e lançar.")
         return {"mensagem": msg, "resultado": {"fora_do_projeto": fora}}
 
-    alvo = (parceiro or "todos os parceiros") + (f" · {consultor['nome']}" if consultor else "")
+    alvo = (parceiro or "todos os parceiros") + (f" · {', '.join(c['nome'] for c in consultor)}" if consultor else "")
     t = GERENTE.iniciar("sync", f"Sync tarefa ClickUp ⇄ Experience ({alvo})", trabalho, pasta=PASTAS["raiz"])
     return 200, {"tarefa": t.id}
 

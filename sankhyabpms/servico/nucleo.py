@@ -53,6 +53,10 @@ def preparar_sys_path():
     for p in (PASTAS["raiz"], PASTAS["conferencia"], PASTAS["aceite"], PASTAS["clickup_tasks"]):
         if p not in sys.path:
             sys.path.append(p)
+    # v1.2.0: pasta atual fixa na da conferência (Fase 3 e Conferência gravam arquivos com
+    # caminho relativo); os outros motores usam caminhos completos. Ver Gerente.iniciar.
+    if os.path.isdir(PASTAS["conferencia"]):
+        os.chdir(PASTAS["conferencia"])
 
 
 def para_json(obj):
@@ -180,37 +184,89 @@ class Tarefa:
 
 class Ocupado(Exception):
     def __init__(self, tarefa):
-        super().__init__(f"Já existe um processo rodando: {tarefa.titulo}")
+        super().__init__(f"Não dá para rodar agora junto com: {tarefa.titulo} (espere terminar)")
         self.tarefa = tarefa
+
+
+# ---------------------------------------------------------------- vários processos (22/10/2026, v1.2.0)
+# Processos que ALTERAM a mesma coisa não podem rodar juntos; leitura com leitura, pode.
+GRUPOS_EXCLUSIVOS = {
+    "experience": {"sync", "sync_sem_os_excluir", "sync_incluir", "aceite_enviar"},   # mexem nos lançamentos
+    "clickup_escrita": {"borracha", "permissoes", "conferencia"},                     # alteram o ClickUp
+    "email": {"agenda_teste", "agenda_enviar"},
+}
+MAX_SIMULTANEOS = 3
+_tarefa_da_thread = threading.local()
+
+# Threads que um processo abre (pools dos motores) herdam a marca do processo, para o
+# que elas imprimirem ir para o log certo quando houver mais de um processo rodando.
+_thread_init_original = threading.Thread.__init__
+_thread_run_original = threading.Thread.run
+
+
+def _thread_init(self, *a, **k):
+    _thread_init_original(self, *a, **k)
+    self._bpms_tarefa = getattr(_tarefa_da_thread, "t", None)
+
+
+def _thread_run(self):
+    if getattr(self, "_bpms_tarefa", None) is not None:
+        _tarefa_da_thread.t = self._bpms_tarefa
+    _thread_run_original(self)
+
+
+threading.Thread.__init__ = _thread_init
+threading.Thread.run = _thread_run
+
+
+def _grupos(tipo):
+    return {g for g, tipos in GRUPOS_EXCLUSIVOS.items() if tipo in tipos}
 
 
 class Gerente:
     def __init__(self):
         self.tarefas = {}
-        self.ativa = None
         self._lock = threading.Lock()
+
+    @property
+    def ativas(self):
+        return [t for t in list(self.tarefas.values()) if t.estado in ("rodando", "aguardando")]
+
+    @property
+    def ativa(self):
+        """A mais recente das que estão rodando (compatibilidade com telas antigas)."""
+        lista = self.ativas
+        return lista[-1] if lista else None
 
     def iniciar(self, tipo, titulo, funcao, pasta=None):
         """
         funcao(tarefa) roda numa thread; o que ela imprimir vai para o log da
         tarefa. Retorno: dict com "mensagem" (texto final) e opcional
         "resultado" (dados para a página).
+
+        Desde a v1.2.0 roda até MAX_SIMULTANEOS processos juntos, exceto: o mesmo
+        tipo duas vezes, ou dois do mesmo grupo de GRUPOS_EXCLUSIVOS. "pasta" não
+        troca mais a pasta atual (os.chdir vale para o programa inteiro): o serviço
+        sobe já na pasta da conferência, a única cujos motores gravam em caminho
+        relativo; os demais usam caminhos completos.
         """
         with self._lock:
-            if self.ativa and self.ativa.estado in ("rodando", "aguardando"):
-                raise Ocupado(self.ativa)
+            ativas = self.ativas
+            for a in ativas:
+                if a.tipo == tipo or (_grupos(a.tipo) & _grupos(tipo)):
+                    raise Ocupado(a)
+            if len(ativas) >= MAX_SIMULTANEOS:
+                raise Ocupado(ativas[0])
             t = Tarefa(tipo, titulo)
             self.tarefas[t.id] = t
-            self.ativa = t
-            # guarda só as 30 últimas
+            # guarda só as 30 últimas (as que estão rodando ficam)
             for antigo in list(self.tarefas)[:-30]:
-                self.tarefas.pop(antigo, None)
+                if self.tarefas[antigo].estado not in ("rodando", "aguardando"):
+                    self.tarefas.pop(antigo, None)
 
         def rodar():
-            cwd_antes = os.getcwd()
+            _tarefa_da_thread.t = t
             try:
-                if pasta:
-                    os.chdir(pasta)
                 retorno = funcao(t) or {}
                 t.mensagem = retorno.get("mensagem", "Concluído.")
                 t.resultado = retorno.get("resultado")
@@ -226,10 +282,7 @@ class Gerente:
                 t.estado = "erro"
             finally:
                 t.fim = datetime.now()
-                try:
-                    os.chdir(cwd_antes)
-                except OSError:
-                    pass
+                _tarefa_da_thread.t = None
 
         threading.Thread(target=rodar, daemon=True, name=f"tarefa-{t.id}").start()
         return t
@@ -252,7 +305,9 @@ class RoteadorSaida:
         self.encoding = "utf-8"
 
     def write(self, texto):
-        t = GERENTE.ativa
+        # v1.2.0: cada processo escreve no SEU log (pela thread dele). Threads auxiliares
+        # que os motores abrem não têm a marca: vão para o processo mais recente.
+        t = getattr(_tarefa_da_thread, "t", None) or GERENTE.ativa
         if t is not None and t.estado in ("rodando", "aguardando"):
             t.escrever(texto)
         if self.original is not None:

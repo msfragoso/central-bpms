@@ -9,6 +9,20 @@
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icones/apple-180.png">
 <link rel="manifest" href="manifest.json">
+<style>
+  /* Vários consultores (23/10/2026) */
+  .multi { position: relative; }
+  .multi summary { list-style: none; cursor: pointer; border: 1px solid var(--campo-borda); background: var(--campo); border-radius: 8px; padding: 8px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .multi summary::-webkit-details-marker { display: none; }
+  .multi summary::after { content: "▾"; float: right; color: var(--suave); margin-left: 8px; }
+  .multi .caixa-multi { position: absolute; z-index: 30; top: calc(100% + 2px); left: 0; right: 0; background: var(--card); border: 1px solid var(--linha); border-radius: 8px; box-shadow: var(--sombra); padding: 8px; }
+  .multi .lista-multi { max-height: 280px; overflow: auto; margin-top: 6px; }
+  .multi .lista-multi label { display: flex; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 6px; cursor: pointer; font-weight: 400; }
+  .multi .lista-multi label:hover { background: var(--bg); }
+  .multi .lista-multi label[hidden] { display: none; }
+  .multi .lista-multi input { width: 16px; height: 16px; accent-color: var(--local); }
+  .multi .acoes-multi { display: flex; gap: 6px; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 12px; color: var(--suave); }
+</style>
 <meta name="theme-color" content="#0a7a52">
 <script src="assets/login.js"></script>
 </head>
@@ -33,9 +47,17 @@
           <span class="ajuda" id="contagem"></span>
         </div>
         <div class="campo">
-          <label for="consultor">Consultor <span class="ajuda">(opcional)</span></label>
-          <select id="consultor"><option value="">Todos os consultores</option></select>
-          <span class="ajuda" data-texto="sync.consultor.ajuda">Só as tarefas em que ele é o responsável. A caça a órfãos e duplicatas também olha só os lançamentos dele — os dos outros consultores não são tocados.</span>
+          <label>Consultores <span class="ajuda">(opcional, pode marcar vários)</span></label>
+          <details class="multi" id="consultor">
+            <summary id="consultor-resumo">Todos os consultores</summary>
+            <div class="caixa-multi">
+              <input id="consultor-busca" placeholder="Buscar consultor…" autocomplete="off">
+              <div class="lista-multi" id="consultor-lista"></div>
+              <div class="acoes-multi"><span id="consultor-conta">Nenhum marcado = todos</span>
+                <button class="btn secundario pequeno" id="consultor-limpar" type="button">Limpar</button></div>
+            </div>
+          </details>
+          <span class="ajuda" data-texto="sync.consultor.ajuda">Só as tarefas em que eles são o responsável. A caça a órfãos e duplicatas também olha só os lançamentos deles — os dos outros consultores não são tocados.</span>
         </div>
         <div class="campo c6"><label for="de">Data inicial</label><input id="de"></div>
         <div class="campo c6"><label for="ate">Data final</label><input id="ate"></div>
@@ -258,9 +280,27 @@
     BPMS.iniciar("/api/sync/sem-os", corpo, el, aoTerminarSemOs);
   };
 
+  // ---------------- vários consultores (23/10/2026)
+  const consultoresMarcados = () => BPMS.$$("#consultor-lista input:checked").map((i) => ({ id: i.value, nome: i.dataset.nome }));
+  function resumoConsultores() {
+    const m = consultoresMarcados();
+    $("#consultor-resumo").textContent = !m.length ? "Todos os consultores"
+      : m.length <= 3 ? m.map((c) => c.nome).join(", ") : `${m.length} consultores: ${m.slice(0, 2).map((c) => c.nome).join(", ")}…`;
+    $("#consultor-conta").textContent = m.length ? `${m.length} marcado(s)` : "Nenhum marcado = todos";
+  }
+  $("#consultor-lista").onchange = resumoConsultores;
+  $("#consultor-busca").oninput = () => {
+    const q = BPMS.normalizar($("#consultor-busca").value);
+    BPMS.$$("#consultor-lista label").forEach((l) => { l.hidden = !!q && !l.dataset.nome.includes(q); });
+  };
+  $("#consultor-limpar").onclick = () => { BPMS.$$("#consultor-lista input").forEach((i) => { i.checked = false; }); resumoConsultores(); };
+  $("#consultor").ontoggle = () => { if ($("#consultor").open) $("#consultor-busca").focus(); };
+  document.addEventListener("click", (e) => { if ($("#consultor").open && !e.target.closest("#consultor")) $("#consultor").open = false; });
+
   $("#btn-executar").onclick = async () => {
-    const corpo = { parceiro: $("#parceiro").value.trim(), de: $("#de").value, ate: $("#ate").value, modelo: $("#modelo").value, consultor: $("#consultor").value };
-    const rotuloConsultor = corpo.consultor ? $("#consultor").selectedOptions[0].textContent : "";
+    const marcados = consultoresMarcados();
+    const corpo = { parceiro: $("#parceiro").value.trim(), de: $("#de").value, ate: $("#ate").value, modelo: $("#modelo").value, consultores: marcados.map((c) => c.id) };
+    const rotuloConsultor = marcados.map((c) => c.nome).join(", ");
     if (!dataValida(corpo.de)) return toast("Data inicial fora do formato DD/MM/AAAA.", "erro");
     if (!dataValida(corpo.ate)) return toast("Data final fora do formato DD/MM/AAAA.", "erro");
     const rotuloModelo = $("#modelo").selectedOptions[0]?.textContent || "Todos";
@@ -268,7 +308,7 @@
       ? `<br><b>${ultimaContagem.total}</b> lista(s) pelo nome${ultimaContagem.listas.length ? `:<ul>${ultimaContagem.listas.map((l) => `<li>${esc(l)}</li>`).join("")}${ultimaContagem.total > ultimaContagem.listas.length ? "<li>…</li>" : ""}</ul>` : ""}` : "";
     const todas = !corpo.parceiro;
     const ok = await confirmar("Executar a sincronização?",
-      `<b>Parceiro:</b> ${todas ? "<b>TODOS os parceiros</b>" : esc(corpo.parceiro)}<br><b>Consultor:</b> ${rotuloConsultor ? `<b>${esc(rotuloConsultor)}</b> (só as tarefas e os lançamentos dele)` : "todos"}<br><b>Período:</b> ${esc(corpo.de)} a ${esc(corpo.ate)}<br><b>Modelo:</b> ${esc(rotuloModelo)}${listas}`
+      `<b>Parceiro:</b> ${todas ? "<b>TODOS os parceiros</b>" : esc(corpo.parceiro)}<br><b>Consultor:</b> ${rotuloConsultor ? `<b>${esc(rotuloConsultor)}</b> (só as tarefas e os lançamentos ${marcados.length > 1 ? "deles" : "dele"})` : "todos"}<br><b>Período:</b> ${esc(corpo.de)} a ${esc(corpo.ate)}<br><b>Modelo:</b> ${esc(rotuloModelo)}${listas}`
       + `<div class="aviso${todas ? " erro" : ""}">Vai <b>criar, alterar e excluir</b> apontamentos no Experience (inclusive órfãos e duplicatas) conforme o ClickUp.</div>`,
       { botao: "Executar", perigo: todas && !rotuloConsultor });
     if (!ok) return;
@@ -281,8 +321,9 @@
       const o = await get("/api/sync/opcoes");
       $("#modelo").innerHTML = o.modelos.map((m) => `<option value="${esc(m.valor)}">${esc(m.rotulo)}</option>`).join("");
       $("#modelo").value = o.modelo; $("#parceiro").value = o.parceiro; $("#de").value = o.de; $("#ate").value = o.ate;
-      $("#consultor").innerHTML = `<option value="">Todos os consultores</option>`
-        + (o.consultores || []).slice().sort((x, y) => BPMS.comparar(x.nome, y.nome)).map((c) => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
+      $("#consultor-lista").innerHTML = (o.consultores || []).slice().sort((x, y) => BPMS.comparar(x.nome, y.nome))
+        .map((c) => `<label data-nome="${esc(BPMS.normalizar(c.nome))}"><input type="checkbox" value="${esc(c.id)}" data-nome="${esc(c.nome)}"> ${esc(c.nome)}</label>`).join("");
+      resumoConsultores();
       contar();
     } catch (e) { toast(e.message, "erro"); }
     BPMS.retomar(["sync", "sync_sem_os", "sync_sem_os_excluir", "sync_incluir"], el, (t) => (t && t.tipo === "sync_sem_os" ? aoTerminarSemOs(t) : t && t.tipo === "sync_sem_os_excluir" ? aoTerminarExcluir(t) : t && t.tipo === "sync" ? aoTerminarSync(t) : travar(false)), () => travar(true));

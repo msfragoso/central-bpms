@@ -32,7 +32,7 @@ import rotas_textos  # noqa: E402,F401
 # Módulos (telas) carregados. config.json pode limitar com "modulos": ["lancar"]
 # -- usado no pacote "só Lançar ClickUp" para outro computador (20/10/2026).
 MODULOS = CONFIG.get("modulos") or ["lancar", "fase3", "conferencia", "aceite", "sync", "om", "agenda", "atendimentos",
-                                   "permissoes"]
+                                   "permissoes", "backlog"]
 for _m in MODULOS:
     importlib.import_module(f"app_{_m}")
 
