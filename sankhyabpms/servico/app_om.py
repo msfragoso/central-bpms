@@ -48,13 +48,22 @@ def _minutos(valor):
 
 
 def buscar_os(data_ini, data_fim, log=print):
-    """Devolve (DataFrame no formato da conferência, total informado pelo OM)."""
-    import pandas as pd
-    from dados_conferencia import _garantir_coluna_tag_clickup, eh_pessoa_excluida_sankhya
-
+    """Devolve (DataFrame no formato da conferência, total de OS lidas)."""
     codusus = executantes()
     log(f"Consultando OS no Sankhya-OM de {data_ini:%d/%m/%Y} a {data_fim:%d/%m/%Y} "
         f"({len(codusus)} executante(s))...")
+    # 26/10/2026 (caso Jean, OS 7184247 de 15/10 sumida da conferência de 01 a 20/10): o OM
+    # devolve no máximo 150 linhas por consulta e informa total=150, sem avisar que cortou.
+    # Consulta em blocos de até 7 dias; bloco que bater no teto é dividido de novo (até 1 dia).
+    linhas, i = _buscar_em_blocos(codusus, data_ini, data_fim, log), {c: n for n, c in enumerate(CAMPOS)}
+    total = len(linhas)
+    return _montar_df(linhas, i, total, log)
+
+
+TETO_OM = 150
+
+
+def _consultar_bloco(codusus, data_ini, data_fim):
     corpo = {
         "dataSetID": "001", "entityName": "ItemOrdemServico", "standAlone": True, "fields": CAMPOS,
         "tryJoinedFields": True, "parallelLoader": True,
@@ -72,11 +81,37 @@ def buscar_os(data_ini, data_fim, log=print):
                      {"application": "ConsultaOS", "resourceID": "br.com.sankhya.os.con.consultaOs",
                       "allowConcurrentCalls": "true"})
     corpo_resp = resp.get("responseBody") or {}
-    linhas = corpo_resp.get("result") or []
-    total = int(corpo_resp.get("total") or len(linhas))
-    if total != len(linhas):
-        log(f"⚠ O OM informou {total} OS mas devolveu {len(linhas)}. Confira o período.")
-    i = {c: n for n, c in enumerate(CAMPOS)}
+    return corpo_resp.get("result") or []
+
+
+def _buscar_em_blocos(codusus, data_ini, data_fim, log):
+    from datetime import timedelta
+    linhas, vistos = [], set()
+    pendentes = []
+    d = data_ini
+    while d <= data_fim:
+        pendentes.append((d, min(d + timedelta(days=6), data_fim)))
+        d += timedelta(days=7)
+    while pendentes:
+        a, b = pendentes.pop(0)
+        lote = _consultar_bloco(codusus, a, b)
+        if len(lote) >= TETO_OM and a < b:
+            meio = a + timedelta(days=(b - a).days // 2)
+            pendentes[:0] = [(a, meio), (meio + timedelta(days=1), b)]
+            continue
+        if len(lote) >= TETO_OM:
+            log(f"⚠ Em {a:%d/%m/%Y} o OM devolveu {len(lote)} OS (o teto da consulta): pode faltar OS nesse dia.")
+        for l in lote:
+            chave = (l[0], l[1])  # NUMOS, NUMITEM
+            if chave not in vistos:
+                vistos.add(chave)
+                linhas.append(l)
+    return linhas
+
+
+def _montar_df(linhas, i, total, log):
+    import pandas as pd
+    from dados_conferencia import _garantir_coluna_tag_clickup, eh_pessoa_excluida_sankhya
     registros, excluidas = [], 0
     for l in linhas:
         nome = l[i["Executante.NOMEUSU"]]

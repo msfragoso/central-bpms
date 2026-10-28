@@ -22,6 +22,7 @@ _ARQUIVOS_MODULO = {
     "atendimentos": ["web/atendimentos.html", "servico/app_atendimentos.py", "@atendimentos_whatsapp/gerar_relatorio.py"],
     "permissoes": ["web/permissoes.html", "servico/app_permissoes.py", "servico/clickup_sessao.py"],
     "backlog": ["web/backlog.html", "servico/app_backlog.py"],
+    "planilhas": ["web/planilhas.html", "servico/app_planilhas.py", "@conferencia_os/conferencia_planilhas.py"],
 }
 _cache_atualizado = {"quando": 0, "dados": {}}
 

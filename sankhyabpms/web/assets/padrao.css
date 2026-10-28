@@ -216,3 +216,9 @@ td.centro, th.centro { text-align: center; }
 nav.links-sankhya { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 nav.links-sankhya a { font-weight: 600; font-size: 13px; padding: 7px 14px; border: 1px solid var(--linha); border-radius: 8px; background: var(--card); color: var(--texto); text-decoration: none; }
 nav.links-sankhya a:hover, nav.links-sankhya a:focus-visible { border-color: var(--local); color: var(--local); }
+
+/* 28/10/2026: organizar módulos arrastando os cartões do Início */
+.legenda #btn-organizar { margin-left: 8px; }
+.organizando section.processo { cursor: grab; outline: 1.5px dashed var(--claude); outline-offset: 2px; }
+.organizando section.processo a, .organizando section.processo button { pointer-events: none; }
+section.processo.arrastando { opacity: .45; }

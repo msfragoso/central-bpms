@@ -23,8 +23,11 @@ def _motor_sem_chdir():
 def opcoes(req):
     m = _motor_sem_chdir()
     ini, fim = m.ciclo_de(m.hoje_local())
+    from datetime import timedelta
+    ant_ini, ant_fim = m.ciclo_de(ini - timedelta(days=1))  # 28/10/2026: botão "Ciclo anterior"
     cfg = m.ler_config()
     return 200, {"de": ini.strftime("%d/%m/%Y"), "ate": fim.strftime("%d/%m/%Y"),
+                 "anterior": {"de": ant_ini.strftime("%d/%m/%Y"), "ate": ant_fim.strftime("%d/%m/%Y")},
                  "aba": m.nome_aba(ini, fim), "url": cfg.get("url", "")}
 
 
@@ -117,6 +120,23 @@ def abas(req):
     return 200, {"abas": lista, "atual": atual}
 
 
+def ler_aba(cfg, aba):
+    """Linhas da aba #RETRO- do ciclo (só leitura). Também usada pelo relatório da Conferência Planilhas."""
+    resp = _get_apps_script(cfg, aba=aba)
+    if not resp.get("ok"):
+        raise RuntimeError(resp.get("erro") or "a planilha recusou a leitura")
+    if "linhas" not in resp:
+        raise RuntimeError("O Apps Script publicado ainda é a versão antiga (não sabe ler a aba). "
+                           "Atualize o script da planilha com o fase3_apps_script.gs novo.")
+    # As colunas são lidas pela POSIÇÃO (A..K), não pelo nome: o cabeçalho da aba
+    # pode ter sido escrito à mão ("Dias úteis de atraso", "Data do Lançamneto"...).
+    padrao = ["Executante", "Parceiro", "Data de Execução", "Data do Lançamento", "Num. OS", "Desconta",
+              "Motivo", "Dias de atraso", "Código Sankhya", "Mensagem Sankhya", "ID Experience"]
+    cab = resp.get("cabecalho") or []
+    return [{(padrao[i] if i < len(padrao) else c): l.get(c, "") for i, c in enumerate(cab)}
+            for l in resp["linhas"]] if cab else resp["linhas"]
+
+
 def _num(v):
     try:
         return int(float(str(v).replace(",", ".")))
@@ -192,19 +212,7 @@ def relatorio(req):
     def trabalho(t):
         from pdf_relatorio import html_para_pdf
         t.log(f"Lendo a aba {aba} da planilha (só leitura)...")
-        resp = _get_apps_script(cfg, aba=aba)
-        if not resp.get("ok"):
-            raise RuntimeError(resp.get("erro") or "a planilha recusou a leitura")
-        if "linhas" not in resp:
-            raise RuntimeError("O Apps Script publicado ainda é a versão antiga (não sabe ler a aba). "
-                               "Atualize o script da planilha com o fase3_apps_script.gs novo.")
-        # As colunas são lidas pela POSIÇÃO (A..K), não pelo nome: o cabeçalho da aba
-        # pode ter sido escrito à mão ("Dias úteis de atraso", "Data do Lançamneto"...).
-        padrao = ["Executante", "Parceiro", "Data de Execução", "Data do Lançamento", "Num. OS", "Desconta",
-                  "Motivo", "Dias de atraso", "Código Sankhya", "Mensagem Sankhya", "ID Experience"]
-        cab = resp.get("cabecalho") or []
-        linhas = [{(padrao[i] if i < len(padrao) else c): l.get(c, "") for i, c in enumerate(cab)}
-                  for l in resp["linhas"]] if cab else resp["linhas"]
+        linhas = ler_aba(cfg, aba)
         t.log(f"  {len(linhas)} linha(s) na aba.")
         agora = datetime.now()
         nome = re.sub(r"[^\w\-]+", "-", aba.replace("#RETRO-", "")).strip("-")

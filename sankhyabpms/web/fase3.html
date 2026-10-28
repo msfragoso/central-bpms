@@ -28,6 +28,9 @@
       <div class="campos">
         <div class="campo c6"><label for="de">De (data de execução)</label><input id="de"></div>
         <div class="campo c6"><label for="ate">Até</label><input id="ate"></div>
+        <div class="campo"><div class="acoes" style="margin:0">
+          <button class="btn secundario" id="btn-ciclo" type="button">Ciclo atual</button>
+          <button class="btn secundario" id="btn-ciclo-ant" type="button">Ciclo anterior</button></div></div>
         <div class="campo"><span class="ajuda" id="aba">Aba de destino: …</span></div>
         <div class="campo">
           <label for="url">URL do Apps Script (/exec)</label>
@@ -78,8 +81,11 @@
   }
   $("#de").addEventListener("input", atualizarAba);
   $("#ate").addEventListener("input", atualizarAba);
+  let opcoesFase3 = null;
+  $("#btn-ciclo").onclick = () => { if (!opcoesFase3) return; $("#de").value = opcoesFase3.de; $("#ate").value = opcoesFase3.ate; atualizarAba(); };
+  $("#btn-ciclo-ant").onclick = () => { if (!opcoesFase3 || !opcoesFase3.anterior) return; $("#de").value = opcoesFase3.anterior.de; $("#ate").value = opcoesFase3.anterior.ate; atualizarAba(); };
 
-  function travar(sim) { $("#btn-executar").disabled = sim; $("#btn-testar").disabled = sim; $("#btn-relatorio").disabled = sim; }
+  function travar(sim) { ["#btn-executar", "#btn-testar", "#btn-relatorio", "#btn-ciclo", "#btn-ciclo-ant"].forEach((s) => ($(s).disabled = sim)); }
   $("#btn-relatorio").onclick = () => {
     const aba = $("#aba-rel").value;
     if (!aba) return toast("Escolha a aba do ciclo.", "erro");
@@ -130,6 +136,7 @@
   (async () => {
     try {
       const o = await get("/api/fase3/opcoes");
+      opcoesFase3 = o;
       $("#de").value = o.de; $("#ate").value = o.ate; $("#url").value = o.url; $("#aba").textContent = `Aba de destino: ${o.aba}`;
     } catch (e) { toast(e.message, "erro"); }
     BPMS.retomar(["fase3", "fase3_relatorio"], el, (t) => (t && t.tipo === "fase3_relatorio" ? travar(false) : aoTerminar(t)), () => travar(true));

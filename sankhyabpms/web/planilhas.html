@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conferência Planilhas</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 12px; }
+  .kpi { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 10px 14px; cursor: pointer; text-align: left; color: var(--texto); font: inherit; }
+  .kpi b { display: block; font-size: 24px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--suave); font-size: 12px; }
+  .kpi.ativo { border-color: var(--local); box-shadow: 0 0 0 2px var(--local-claro); }
+  .sit { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .sit.ok { background: #d8f0e3; color: #0a5e40; } .sit.av { background: #ffe9c7; color: #8a4b0f; }
+  .sit.er { background: #fde0de; color: #b42318; } .sit.in { background: #e3e8f7; color: #33459a; }
+  tr.amarelo td { background: #fff59d !important; color: #14211b; }
+  tr.grupo td { background: var(--bg); font-weight: 700; }
+  .meta { color: var(--suave); font-size: 11px; }
+  .tabela-caixa { max-height: 640px; }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="planilhas.titulo">Conferência das planilhas</h1>
+      <p data-texto="planilhas.subtitulo">Tarefas do ClickUp com Apontamento de planilha × planilhas de horas dos consultores (Drive) · só leitura até você fechar as planilhas</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="planilhas"></span>
+  </div>
+
+  <div class="grade duas">
+    <section class="card faixa">
+      <h2>Parâmetros</h2>
+      <div class="campos">
+        <div class="campo c6"><label for="de">De</label><input id="de"></div>
+        <div class="campo c6"><label for="ate">Até</label><input id="ate"></div>
+        <div class="campo"><span class="ajuda">Período pelo vencimento da tarefa no ClickUp e pela data da linha na planilha.</span></div>
+        <div class="campo"><div class="acoes" style="margin:0">
+          <button class="btn secundario" id="btn-ciclo" type="button">Ciclo atual</button>
+          <button class="btn secundario" id="btn-ciclo-ant" type="button">Ciclo anterior</button></div></div>
+        <div class="campo c6"><label for="consultor">Consultor</label><select id="consultor"><option value="Todos">Todos</option></select></div>
+        <div class="campo"><span class="ajuda" id="info"></span></div>
+      </div>
+      <div class="acoes"><button class="btn" id="btn-executar">Executar conferência</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <pre class="log" id="log"></pre>
+      <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+      <div class="arquivos" id="arquivos"></div>
+    </section>
+  </div>
+
+  <section class="card faixa oculto" id="card-resultado" style="margin-top:14px">
+    <h2>Resultado</h2>
+    <div class="kpis" id="kpis"></div>
+    <div class="campos">
+      <div class="campo c4"><label for="f-consultor">Consultor</label><select id="f-consultor"></select></div>
+      <div class="campo c4"><label for="busca">Buscar</label><input id="busca" placeholder="Cliente, parceiro, tarefa, OS…"></div>
+      <div class="campo c4"><div class="acoes" style="margin:22px 0 0">
+        <button class="btn secundario" id="btn-html" type="button">🌐 Relatório HTML5</button>
+        <button class="btn secundario" id="btn-pdf" type="button">📄 PDF</button></div></div>
+      <div class="campo"><div class="acoes" style="margin:0">
+        <span class="ajuda" id="aba-info"></span><span class="espaco"></span>
+        <button class="btn" id="btn-gravar" type="button">💾 Fechar planilhas (preencher OBS)</button></div></div>
+    </div>
+    <div class="tabela-caixa" style="margin-top:10px">
+      <table>
+        <thead><tr><th class="centro">Data</th><th>Planilha (cliente · horário)</th><th>Tarefa ClickUp</th><th>Situação</th>
+          <th class="centro">OS</th><th>Observação</th></tr></thead>
+        <tbody id="corpo"></tbody>
+      </table>
+    </div>
+    <span class="ajuda" style="font-size:12px;color:var(--suave)">Linhas amarelas: a tarefa já tem OS (campo OS Sankhya do ClickUp ou Nº de OS anotado na planilha).</span>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, esc, toast, confirmar, mascaraData, normalizar } = BPMS;
+  BPMS.montarTopo("planilhas");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  [$("#de"), $("#ate")].forEach(mascaraData);
+  const SIT = { "✔ Conferido": "ok", "⚠ Horário diferente": "av", "⚠ Cliente diferente": "av", "❌ Falta na planilha": "er", "❓ Sem tarefa no ClickUp": "in", "⚠ Conflito de horário": "er", "⚠ Lançamento duplicado": "er" };
+  let opcoes = null, ultima = null, itens = [], filtroSit = "", arquivos = [];
+
+  const base = ["127.0.0.1", "localhost"].includes(location.hostname) ? "" : "http://127.0.0.1:8766";
+  const abrirArquivo = (re) => {
+    const a = arquivos.find((x) => re.test(x.nome));
+    if (!a) return toast("Arquivo ainda não gerado.", "erro");
+    window.open(`${base}/api/tarefas/${ultima}/arquivo/${a.indice}`, "_blank");
+  };
+  $("#btn-html").onclick = () => abrirArquivo(/\.html?$/i);
+  $("#btn-pdf").onclick = () => abrirArquivo(/\.pdf$/i);
+
+  $("#btn-ciclo").onclick = () => { $("#de").value = opcoes.de; $("#ate").value = opcoes.ate; };
+  $("#btn-ciclo-ant").onclick = () => { $("#de").value = opcoes.anterior.de; $("#ate").value = opcoes.anterior.ate; };
+
+  function travar(sim) { ["#btn-executar", "#btn-gravar"].forEach((s) => ($(s).disabled = sim)); }
+
+  function desenharKpis(r) {
+    const k = [["", "Todos", r.total], ["✔ Conferido", "Conferidos", r.ok], ["⚠ Horário diferente", "Horário diferente", r.horario],
+      ["⚠ Cliente diferente", "Cliente diferente", r.cliente], ["❌ Falta na planilha", "Falta na planilha", r.falta],
+      ["❓ Sem tarefa no ClickUp", "Sem tarefa no ClickUp", r.sem_tarefa], ["⚠ Conflito de horário", "Conflito de horário", r.conflito || 0], ["⚠ Lançamento duplicado", "Lançamento duplicado", r.duplicado || 0], ["amarelo", "Com OS", r.com_os]];
+    $("#kpis").innerHTML = k.map(([v, rot, n]) => `<button class="kpi ${filtroSit === v ? "ativo" : ""}" data-sit="${esc(v)}"><b>${n}</b><span>${esc(rot)}</span></button>`).join("");
+    $("#kpis").querySelectorAll(".kpi").forEach((b) => (b.onclick = () => { filtroSit = b.dataset.sit; desenharKpis(r); desenhar(); }));
+  }
+
+  function desenhar() {
+    const fc = $("#f-consultor").value, q = normalizar($("#busca").value);
+    const lista = itens.filter((x) => (!fc || x.consultor === fc)
+      && (!filtroSit || (filtroSit === "amarelo" ? x.amarelo : x.situacao === filtroSit))
+      && (!q || normalizar([x.cliente_planilha, x.parceiro, x.tarefa, x.os_om, x.observacao, x.lista].join(" ")).includes(q)));
+    let html = "", atual = null;
+    for (const x of lista) {
+      if (x.consultor !== atual) {
+        atual = x.consultor;
+        const n = lista.filter((y) => y.consultor === atual);
+        html += `<tr class="grupo"><td colspan="6">${esc(atual)} · ${n.length} item(ns) · ${n.filter((y) => y.situacao !== "✔ Conferido").length} pendência(s)</td></tr>`;
+      }
+      html += `<tr class="${x.amarelo ? "amarelo" : ""}"><td class="centro">${esc(x.data)}</td>
+        <td>${esc(x.cliente_planilha) || "–"}<div class="meta">${esc(x.horario_planilha)}${x.total_planilha ? " · " + esc(x.total_planilha) + "h" : ""}${x.aba_planilha ? " · " + esc(x.aba_planilha) : ""}</div></td>
+        <td>${x.task_id ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.tarefa)}</a>` : "–"}
+          <div class="meta">${[x.parceiro, x.periodo, x.apontamento, x.status].filter(Boolean).map(esc).join(" · ")}</div></td>
+        <td><span class="sit ${SIT[x.situacao] || ""}">${esc(x.situacao)}</span></td>
+        <td class="centro">${esc(x.os_om) || "–"}</td><td>${esc(x.observacao)}</td></tr>`;
+    }
+    $("#corpo").innerHTML = html || `<tr><td colspan="6" class="vazio-tabela">Nada com esse filtro.</td></tr>`;
+  }
+  $("#f-consultor").onchange = desenhar;
+  $("#busca").oninput = desenhar;
+
+  function aoTerminar(t) {
+    travar(false);
+    if (!t || !t.resultado || !t.resultado.itens) return;
+    ultima = t.id; arquivos = t.arquivos || []; itens = t.resultado.itens; filtroSit = "";
+    const nomes = [...new Set(itens.map((x) => x.consultor))].sort((a, b) => a.localeCompare(b));
+    $("#f-consultor").innerHTML = `<option value="">Todos</option>` + nomes.map((n) => `<option>${esc(n)}</option>`).join("");
+    $("#aba-info").textContent = "Fechar as planilhas preenche a coluna OBS de cada linha conferida, com cópia de segurança antes.";
+    desenharKpis(t.resultado.resumo); desenhar();
+    $("#card-resultado").classList.remove("oculto");
+  }
+  function aoTerminarGravar(t) { travar(false); if (t && t.mensagem) toast(t.mensagem, t.estado === "concluida" ? "ok" : "erro"); }
+  // 27/10/2026 (Fragoso): terminada a conferência (planilhas fechadas), pergunta se cria a aba do ciclo novo
+  async function aoFechar(t) {
+    aoTerminarGravar(t);
+    const p = t && t.estado === "concluida" && t.resultado && t.resultado.proximo;
+    if (!p) return;
+    const quem = p.consultor === "Todos" ? "todas as planilhas" : `a planilha de ${esc(($("#consultor").selectedOptions[0] || {}).text || p.consultor)}`;
+    const ok = await BPMS.modal({
+      titulo: `Autoriza criar a aba do novo ciclo (${p.nome})?`,
+      html: `Conferência concluída. Criar agora a aba <b>${esc(p.nome)}</b> (${esc(p.de)} a ${esc(p.ate)}) em ${quem}:
+        cópia da aba do ciclo anterior com os campos vazios e as datas do ciclo. Planilha que já tem a aba é pulada. Cópia de segurança antes.`,
+      opcoes: [{ valor: false, rotulo: "Agora não", estilo: "neutro" }, { valor: true, rotulo: `Sim, criar ${p.nome}`, estilo: "primario" }] });
+    if (!ok) return;
+    travar(true);
+    BPMS.iniciar("/api/planilhas/aba-ciclo", { de: p.de, consultor: p.consultor, confirmar: true }, el, aoTerminarGravar);
+  }
+
+  $("#btn-executar").onclick = () => {
+    const corpo = { de: $("#de").value, ate: $("#ate").value, consultor: $("#consultor").value };
+    if (!BPMS.dataValida(corpo.de) || !BPMS.dataValida(corpo.ate)) return toast("Use DD/MM/AAAA e 'De' menor ou igual a 'Até'.", "erro");
+    travar(true); $("#card-resultado").classList.add("oculto");
+    BPMS.iniciar("/api/planilhas/executar", corpo, el, aoTerminar);
+  };
+
+  $("#btn-gravar").onclick = async () => {
+    if (!ultima) return toast("Rode a conferência primeiro.", "erro");
+    const arqs = new Set(itens.map((x) => x.consultor)).size;
+    const ok = await BPMS.modal({
+      titulo: "Já podemos fechar a planilha e preencher a OBS?",
+      html: `Planilhas de <b>${arqs}</b> consultor(es) · <b>${itens.length}</b> linha(s).<br><br>
+        A coluna <b>OBS - Marcelo.Fragoso</b> de cada linha conferida recebe, em vermelho e negrito:
+        <b style="color:#d00">VISTO - ${BPMS.hojeBR()}</b> quando a linha bate com o ClickUp; senão
+        <b style="color:#d00">Horário diferente do ClickUp (…).</b>, <b style="color:#d00">Cliente diferente do ClickUp (…).</b>,
+        <b style="color:#d00">Já tem OS nº ….</b>, <b style="color:#d00">Conflito de horário com OS-… (hh:mm-hh:mm) parceiro …</b>, <b style="color:#d00">Lançamento duplicado com OS-… (hh:mm-hh:mm) parceiro …</b> (mesma data, horário e parceiro) ou <b style="color:#d00">Sem tarefa no ClickUp.</b> — nesses casos a linha fica
+        <span style="background:#ff0;color:#d00;font-weight:700;padding:0 4px">amarela com o texto em vermelho negrito</span>.
+        Planilha sem nada preenchido no ciclo: todas as linhas com <b style="color:#d00">VISTO - ${BPMS.hojeBR()}</b> (sem fundo amarelo).<br>
+        OBS que já tem texto não é sobrescrita. Cópia de segurança antes. Feche as planilhas no Excel antes.`,
+      opcoes: [
+        { valor: false, rotulo: "Não, ainda não", estilo: "neutro" },
+        { valor: true, rotulo: "Sim, fechar e preencher a OBS", estilo: "primario" },
+      ] });
+    if (!ok) return;
+    travar(true);
+    BPMS.iniciar("/api/planilhas/gravar", { tarefa: ultima, fechar: true, confirmar: true }, el, aoFechar);
+  };
+
+
+
+  (async () => {
+    try {
+      opcoes = await get("/api/planilhas/opcoes");
+      $("#de").value = opcoes.de; $("#ate").value = opcoes.ate;
+      $("#info").textContent = opcoes.raiz ? "" : "⚠ Pasta 01. Planilhas Consultores não encontrada no G:\\ (atalho no Meu Drive).";
+      $("#consultor").innerHTML = `<option value="Todos">Todos</option>` + opcoes.consultores.map((c) => `<option value="${esc(c.chave)}">${esc(c.pasta)}</option>`).join("");
+    } catch (e) { toast(e.message, "erro"); }
+    BPMS.retomar(["planilhas", "planilhas_gravar", "planilhas_aba"], el, (t) => (t && t.tipo !== "planilhas" ? aoTerminarGravar(t) : aoTerminar(t)), () => travar(true));
+  })();
+})();
+</script>
+</body>
+</html>

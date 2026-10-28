@@ -178,7 +178,15 @@ def executar(req):
         if fora:
             msg += (f" {len(fora)} consultor(es) fora do projeto no Experience: veja a lista abaixo "
                     "para cadastrar e lançar.")
-        return {"mensagem": msg, "resultado": {"fora_do_projeto": fora}}
+        # 26/10/2026: OS apontada com data diferente do lançamento (também vai por e-mail)
+        try:
+            from clickup_sync import os_data_diferente
+            os_data = list(os_data_diferente.ACHADOS)
+        except Exception:
+            os_data = []
+        if os_data:
+            msg += f" ⚠ {len(os_data)} OS apontada(s) com data diferente do lançamento: veja abaixo."
+        return {"mensagem": msg, "resultado": {"fora_do_projeto": fora, "os_data_diferente": os_data}}
 
     alvo = (parceiro or "todos os parceiros") + (f" · {', '.join(c['nome'] for c in consultor)}" if consultor else "")
     t = GERENTE.iniciar("sync", f"Sync tarefa ClickUp ⇄ Experience ({alvo})", trabalho, pasta=PASTAS["raiz"])

@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.2.0";
+  const VERSAO = "1.3.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -15,6 +15,7 @@ const BPMS = (() => {
     { id: "atendimentos", href: "atendimentos.html", rotulo: "Atendimentos WhatsApp" },
     { id: "permissoes", href: "permissoes.html", rotulo: "Permissões ClickUp" },
     { id: "backlog", href: "backlog.html", rotulo: "Backlog Base" },
+    { id: "planilhas", href: "planilhas.html", rotulo: "Conferência Planilhas" },
   ];
 
   // ------------------------------------------------------------ util
@@ -81,7 +82,7 @@ const BPMS = (() => {
     </div>`;
     document.body.prepend(topo);
     $("#botao-editar").onclick = () => (document.body.classList.contains("editando") ? null : editarTextos());
-    aplicarTextos().then(ajustarMenu);
+    aplicarTextos().then(aplicarOrdemMenu).then(ajustarMenu);
     prepararMenu(topo);
     $("#botao-tema").onclick = () => {
       const escuro = document.documentElement.dataset.theme
@@ -96,6 +97,34 @@ const BPMS = (() => {
     document.body.append(toasts);
     atualizarPilula();
     setInterval(atualizarPilula, 5000);
+  }
+
+  // ------------------------------------------------------------ ordem dos módulos
+  // 28/10/2026 (Fragoso): a ordem escolhida arrastando os cartões do Início vale também
+  // para o menu do topo. Fica no serviço (dados/ordem_modulos.json); "Início" é sempre o 1º.
+  let ordemSalva = null;
+  async function lerOrdem() {
+    if (ordemSalva) return ordemSalva;
+    try { ordemSalva = (await get("/api/ordem")).ordem || []; } catch (e) { ordemSalva = []; }
+    return ordemSalva;
+  }
+  function ordenarPor(ordem, itens, idDe) {
+    const pos = new Map(ordem.map((id, i) => [id, i]));
+    const chave = (x) => (pos.has(idDe(x)) ? pos.get(idDe(x)) : 1000 + itens.indexOf(x));
+    return [...itens].sort((a, b) => chave(a) - chave(b));
+  }
+  async function aplicarOrdemMenu() {
+    const nav = $("#nav-principal");
+    const ordem = await lerOrdem();
+    if (!nav || !ordem.length) return;
+    const idDe = (a) => (TELAS.find((t) => t.href === a.getAttribute("href")) || {}).id;
+    const links = $$("a", nav).filter((a) => idDe(a) !== "inicio");
+    ordenarPor(ordem, links, idDe).forEach((a) => nav.append(a));
+  }
+  async function gravarOrdem(ordem) {
+    ordemSalva = (await post("/api/ordem", { ordem })).ordem || ordem;
+    await aplicarOrdemMenu();
+    ajustarMenu();
   }
 
   // ------------------------------------------------------------ menu responsivo
@@ -448,5 +477,6 @@ const BPMS = (() => {
   }
 
   return { $, $$, esc, normalizar, hojeBR, api, get, post, montarTopo, atualizarPilula, toast, modal, confirmar, informar,
-           acompanhar, retomar, iniciar, mascaraData, dataValida, busca, ordenavel, comparar, arquivoBase64 };
+           acompanhar, retomar, iniciar, mascaraData, dataValida, busca, ordenavel, comparar, arquivoBase64,
+           lerOrdem, ordenarPor, gravarOrdem };
 })();

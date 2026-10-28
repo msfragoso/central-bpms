@@ -18,7 +18,7 @@
     <div>
       <p data-texto="inicio.subtitulo">Todos os processos do PMO num lugar só.</p>
     </div>
-    <div class="legenda"><span>roda no seu PC</span><span class="claude">abre no Claude</span></div>
+    <div class="legenda"><span>roda no seu PC</span><span class="claude">abre no Claude</span><button class="btn secundario pequeno" id="btn-organizar" title="Arraste os cartões para mudar a ordem (vale também para o menu)">↕ Organizar módulos</button></div>
   </div>
 
   <nav class="links-sankhya" aria-label="Atalhos">
@@ -82,6 +82,12 @@
       <p data-texto="card.backlog.descricao">Painel das tarefas com Status = Backlog Base, agrupadas por Agendamento, com filtros por parceiro e responsável (só leitura).</p>
       <div class="acoes"><a class="btn" href="backlog.html">Abrir</a></div>
     </section>
+
+    <section class="card faixa processo">
+      <h3><span data-texto="card.planilhas.titulo">Conferência Planilhas</span> <small class="ultimo-uso" data-ultimo-uso="planilhas"></small></h3>
+      <p data-texto="card.planilhas.descricao">Cruza as tarefas com Apontamento de planilha (Bonificado, Planilha - Serviços, Treinamento, Faturado) com as planilhas de horas dos consultores no Drive. Relatório HTML5/PDF, OBS preenchida ao fechar e aba vazia do próximo ciclo.</p>
+      <div class="acoes"><a class="btn" href="planilhas.html">Abrir</a></div>
+    </section>
   </div>
 </main>
 <script src="assets/comum.js"></script>
@@ -92,6 +98,59 @@
     window.open("https://claude.ai/new?q=" + encodeURIComponent(pedido), "_blank", "noopener");
   }
   BPMS.$("#btn-agenda").onclick = () => abrirClaude("Envia a agenda da semana para os parceiros.");
+
+  // 28/10/2026 (Fragoso): arrastar os cartões para mudar a ordem dos módulos (Início e menu)
+  const grade = BPMS.$(".processos");
+  const idCartao = (c) => c.dataset.modulo;
+  const cartoes = () => BPMS.$$("section.processo", grade);
+  cartoes().forEach((c) => { c.dataset.modulo = BPMS.$("[data-ultimo-uso]", c)?.dataset.ultimoUso || ""; });
+  const padrao = cartoes().map(idCartao);
+  const aplicar = (ordem) => BPMS.ordenarPor(ordem, cartoes(), idCartao).forEach((c) => grade.append(c));
+  BPMS.lerOrdem().then((o) => o.length && aplicar(o));
+
+  let arrastando = null;
+  grade.addEventListener("dragstart", (e) => {
+    arrastando = e.target.closest("section.processo");
+    if (!arrastando) return;
+    arrastando.classList.add("arrastando");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", idCartao(arrastando));
+  });
+  grade.addEventListener("dragover", (e) => {
+    if (!arrastando) return;
+    e.preventDefault();
+    const alvo = e.target.closest("section.processo");
+    if (!alvo || alvo === arrastando) return;
+    const lista = cartoes();
+    // antes ou depois do alvo, conforme o sentido do arraste na grade
+    grade.insertBefore(arrastando, lista.indexOf(arrastando) < lista.indexOf(alvo) ? alvo.nextSibling : alvo);
+  });
+  grade.addEventListener("drop", (e) => e.preventDefault());
+  grade.addEventListener("dragend", () => { arrastando?.classList.remove("arrastando"); arrastando = null; });
+
+  function organizar() {
+    const antes = cartoes().map(idCartao);
+    document.body.classList.add("organizando");
+    cartoes().forEach((c) => { c.draggable = true; });
+    const barra = document.createElement("div");
+    barra.className = "barra-edicao";
+    barra.innerHTML = `<span>↕ Arraste os cartões para a posição desejada. A ordem vale também para o menu do topo.</span>
+      <button class="btn secundario pequeno" data-a="padrao">Restaurar padrão</button>
+      <button class="btn secundario pequeno" data-a="cancelar">Cancelar</button>
+      <button class="btn pequeno" data-a="salvar">Salvar ordem</button>`;
+    document.body.append(barra);
+    const sair = () => { document.body.classList.remove("organizando"); cartoes().forEach((c) => { c.draggable = false; }); barra.remove(); };
+    barra.onclick = async (e) => {
+      const a = e.target.dataset.a;
+      if (a === "padrao") aplicar(padrao);
+      if (a === "cancelar") { aplicar(antes); sair(); }
+      if (a === "salvar") {
+        try { await BPMS.gravarOrdem(cartoes().map(idCartao)); BPMS.toast("Ordem dos módulos salva.", "ok"); sair(); }
+        catch (err) { BPMS.toast("Não consegui salvar a ordem: " + err.message, "erro"); }
+      }
+    };
+  }
+  BPMS.$("#btn-organizar").onclick = () => (document.body.classList.contains("organizando") ? null : organizar());
 </script>
 </body>
 </html>

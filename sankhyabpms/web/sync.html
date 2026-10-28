@@ -79,6 +79,17 @@
     </section>
   </div>
 
+  <section class="card faixa oculto" id="card-osdata" style="margin-top:14px;border-left-color:var(--perigo)">
+    <h2 style="color:var(--perigo)">⚠ OS apontada com data diferente do lançamento</h2>
+    <p style="color:var(--suave);margin:-4px 0 12px">O consultor apontou a OS em outro dia, não no dia agendado. Os casos novos também vão por e-mail para você (uma vez cada).</p>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr><th>Consultor</th><th>FAP</th><th class="centro">Agendado</th><th class="centro">OS em</th><th>Horário</th><th>Procedimento</th><th>Pedido</th><th>ClickUp</th></tr></thead>
+        <tbody id="corpo-osdata"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="card faixa oculto" id="card-fora" style="margin-top:14px">
     <h2 data-texto="sync.fora.titulo">Consultores fora do projeto no Experience</h2>
     <p style="color:var(--suave);margin:-4px 0 12px" data-texto="sync.fora.descricao">O sync não lançou estas tarefas porque o consultor não está na equipe do projeto. "Cadastrar no projeto e lançar" inclui o consultor como Consultor(a)/Analista no processo da tarefa e roda o sync de novo só para essa FAP e essas datas. Nada é cadastrado sem a sua confirmação.</p>
@@ -191,8 +202,16 @@
     if (foraEmCurso) foraSituacao[foraEmCurso] = t && t.estado === "concluida" ? "CADASTRADO" : "NÃO CADASTRADO";
     foraEmCurso = null; desenharFora();
   };
+  const desenharOsData = (lista) => {
+    $("#card-osdata").classList.toggle("oculto", !lista.length);
+    $("#corpo-osdata").innerHTML = lista.map((a) => `<tr><td>${esc(a.consultor)}</td><td>${esc(a.fap)}</td>
+      <td class="centro">${esc(a.data_agendada)}</td><td class="centro" style="color:var(--perigo);font-weight:700">${esc(a.data_execucao)}</td>
+      <td>${esc(a.horario)}</td><td>${esc(a.procedimento)}</td><td>${esc(a.pedido)}</td>
+      <td>${a.clickup ? `<a href="https://app.clickup.com/t/${esc(a.clickup)}" target="_blank" rel="noopener">${esc(a.clickup)}</a>` : "–"}</td></tr>`).join("");
+  };
   const aoTerminarSync = (t) => {
     travar(false);
+    desenharOsData((t && t.resultado && t.resultado.os_data_diferente) || []);
     if (t && t.resultado && t.resultado.fora_do_projeto) {
       fora = t.resultado.fora_do_projeto; foraSituacao = {}; desenharFora();
       if (fora.length) $("#card-fora").scrollIntoView({ behavior: "smooth" });

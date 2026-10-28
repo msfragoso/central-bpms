@@ -35,7 +35,7 @@ def opcoes(req):
     return 200, {
         "parceiros": sorted(m.OPCOES_PARCEIRO.keys(), key=lambda s: m.remover_acentos(s).lower()),
         "origens": list(m.OPCOES_ORIGEM.keys()),
-        "periodos": list(m.OPCOES_PERIODO.keys()),
+        "periodos": list(m.atualizar_opcoes_periodo().keys()),  # 26/10/2026: opções atuais do ClickUp
         "membros": m.carregar_membros_cache(),
         "memoria": _memoria(),
     }
@@ -61,7 +61,9 @@ def faps(req):
 
 @rota("GET", "/api/lancar/periodo")
 def periodo(req):
-    return 200, {"periodo": _motor().interpretar_periodo(req.query.get("texto", ""))}
+    m = _motor()
+    m.atualizar_opcoes_periodo()
+    return 200, {"periodo": m.interpretar_periodo(req.query.get("texto", ""))}
 
 
 PARCEIRO_HC = "X-Horas Cruzadas"
@@ -282,6 +284,7 @@ def lancar(req):
 
     periodo = None
     if (c.get("periodo") or "").strip():
+        m.atualizar_opcoes_periodo()
         periodo = m.interpretar_periodo(c["periodo"])
         if not periodo:
             raise ErroUsuario(f"Período '{c['periodo']}' não existe no ClickUp. Selecione uma opção da lista (ex.: 08h-10h).")

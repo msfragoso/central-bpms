@@ -39,6 +39,7 @@
       <table>
         <thead><tr><th class="centro">Enviar</th><th>Parceiro</th><th class="centro">Tarefas</th><th>Para</th><th>Cc</th><th>Situação</th></tr></thead>
         <tbody id="corpo"></tbody>
+        <tfoot id="rodape-total"></tfoot>
       </table>
     </div>
     <div class="acoes">
@@ -82,8 +83,12 @@
         <td><input data-cc="${i}" value="${esc(lista(p.cc))}" placeholder="—" style="min-width:220px"></td>
         <td>${sit ? `<span class="etiqueta ${sit === "ENVIADO" ? "enviada" : "falhou"}">${esc(sit)}</span>` : p.motivo ? `<span style="color:var(--suave)">${esc(p.motivo)}</span>` : ""}</td></tr>`;
     }).join("") || `<tr><td colspan="6" class="vazio-tabela">Nenhuma tarefa na semana.</td></tr>`;
-    const marcados = parceiros.filter((p) => p.enviar && !situacao[p.parceiro]).length;
-    $("#contagem").textContent = `${parceiros.length} parceiro(s) · ${marcados} marcado(s) para envio`;
+    const sel = parceiros.filter((p) => p.enviar && !situacao[p.parceiro]), marcados = sel.length;
+    // 23/10/2026: quantidade de tarefas (total e das marcadas)
+    const soma = (l) => l.reduce((a, p) => a + (+p.tarefas || 0), 0), total = soma(parceiros);
+    $("#contagem").textContent = `${parceiros.length} parceiro(s) · ${total} tarefa(s) · ${marcados} marcado(s) para envio (${soma(sel)} tarefa(s))`;
+    $("#rodape-total").innerHTML = parceiros.length
+      ? `<tr><td></td><td><b>Total</b></td><td class="centro"><b>${total}</b></td><td colspan="3" class="ajuda">${soma(sel)} tarefa(s) nos ${marcados} parceiro(s) marcado(s)</td></tr>` : "";
     $("#btn-enviar").disabled = ocupado || !marcados;
     $("#btn-teste").disabled = ocupado || !parceiros.length;
   }

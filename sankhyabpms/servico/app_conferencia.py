@@ -308,6 +308,80 @@ def _mensagens_whatsapp(mensagens, periodo_texto):
     return saida
 
 
+def _oferecer_recriar_tarefas_excluidas(t, resultado):
+    """
+    28/10/2026 (Fragoso): OS do Sankhya cuja tarefa do ClickUp (TAG ID) foi excluída -- pergunta se
+    pode criar uma tarefa nova e vincular a OS (ver conferencia_os/tarefa_excluida.py). As que forem
+    vinculadas saem da seção "OS no Sankhya sem tarefa correspondente" do relatório.
+    """
+    from clickup_sync.config import CLICKUP_HEADERS
+    import tarefa_excluida as te
+    sobras = resultado.sobras
+    if sobras is None or sobras.empty or "Tag ClickUp" not in sobras.columns:
+        return
+    headers = dict(CLICKUP_HEADERS, **{"Content-Type": "application/json"})
+    vinculadas = []
+    for idx in te.tarefas_excluidas(sobras, headers, t.log):
+        row = sobras.loc[idx]
+        num_os = str(row["Núm. OS"]).replace(".0", "")
+        data = row["Dt execução"].strftime("%d/%m/%Y") if hasattr(row["Dt execução"], "strftime") else str(row["Dt execução"])
+        resp = t.perguntar(
+            "Tarefa excluída do ClickUp",
+            f"A OS {num_os} ({row.get('Nome (Executante)')}, {row.get('Nome Parceiro (Parceiro)')}, {data}, "
+            f"{row.get('Hora Inicial')}-{row.get('Hora Final')}) está vinculada à tarefa {row.get('Tag ClickUp')}, "
+            "que foi EXCLUÍDA do ClickUp.\n\nPosso criar uma tarefa nova e vincular essa OS a ela "
+            "(status complete, OS Sankhya, X-Observações OS e tempo apontado)?",
+            [{"valor": True, "rotulo": "Sim, criar e vincular", "estilo": "primario"},
+             {"valor": False, "rotulo": "Não", "estilo": "neutro"}])
+        if not resp:
+            t.log(f"  OS {num_os}: nova tarefa NÃO criada (você escolheu Não).")
+            continue
+        try:
+            nova, url, lista, parceiro = te.recriar_e_vincular(row, headers, t.log)
+            t.log(f"  ✔ OS {num_os}: tarefa nova {nova} criada em '{lista}' (parceiro {parceiro}) e vinculada -- {url}")
+            vinculadas.append(idx)
+        except Exception as e:
+            t.log(f"  ❌ OS {num_os}: não consegui criar a tarefa nova ({e}).")
+    if vinculadas:
+        resultado.sobras = sobras.drop(index=vinculadas)
+
+
+def _tirar_sobras_ja_gravadas_no_clickup(t, resultado):
+    """
+    28/10/2026 (Fragoso, caso CM Gestão OS 7186961 / tarefa 17twj8w1rk5): a OS pode já estar gravada no
+    campo "OS Sankhya" de uma tarefa que fica FORA da visualização "Visão para IA" (ex.: Apontamento
+    "Sankhya OM", X-Horas Cruzadas). Antes de listar a OS como "sem tarefa correspondente", procura o
+    número no ClickUp inteiro (filtro pelo campo OS Sankhya). Só leitura.
+    """
+    import json as _json
+    import requests
+    from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
+    from config_conferencia import ID_CAMPO_OS
+    sobras = resultado.sobras
+    if sobras is None or sobras.empty:
+        return
+    team = "9013912851"
+    achadas = []
+    for idx, row in sobras.iterrows():
+        num = str(row.get("Núm. OS") or "").replace(".0", "").strip()
+        if not num.isdigit():
+            continue
+        try:
+            r = requests.get(f"{CLICKUP_API}/team/{team}/task", headers=CLICKUP_HEADERS, timeout=60, params={
+                "custom_fields": _json.dumps([{"field_id": ID_CAMPO_OS, "operator": "=", "value": num}]),
+                "include_closed": "true", "subtasks": "true"})
+            tarefas = r.json().get("tasks", []) if r.status_code == 200 else []
+        except Exception:
+            tarefas = []
+        if tarefas:
+            achadas.append(idx)
+            t.log(f"  OS {num}: já gravada na tarefa {tarefas[0]['id']} ({tarefas[0].get('name', '')[:40]}) -- "
+                  "fora da visualização da conferência; não entra como 'sem tarefa'.")
+    if achadas:
+        resultado.sobras = sobras.drop(index=achadas)
+        t.log(f"{len(achadas)} OS já estavam vinculadas a tarefas fora da visualização (campo OS Sankhya).")
+
+
 @rota("POST", "/api/conferencia/executar")
 def executar(req):
     from config_conferencia import CAMINHO_DESTINO_PADRAO
@@ -370,6 +444,10 @@ def executar(req):
             print("\n=== ETAPA 3: cruzamento ===")
             resultado = cruzar_bases(sankhya_df, cu_df, callback_divergencia=perguntar_divergencia,
                                      consultor_alvo=consultor)
+            # primeiro tira as OS já gravadas em alguma tarefa (ex.: Megatrucks, já recriada), depois
+            # pergunta só pelas que ainda apontam para tarefa excluída
+            _tirar_sobras_ja_gravadas_no_clickup(t, resultado)
+            _oferecer_recriar_tarefas_excluidas(t, resultado)
 
             print("\n=== ETAPA 4: relatório HTML ===")
             fonte_os = {"om": "Sankhya-OM" + (" (com TAG ID do Experience)" if usar_tag_id else ""),

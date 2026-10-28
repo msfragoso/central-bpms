@@ -167,9 +167,42 @@
     $("#btn-aplicar").disabled = ocupado || !marcadas.size || !$("#usuario").value;
     $("#btn-pdf-usuario").disabled = ocupado || !$("#usuario").value;
   }
-  $("#arvore").addEventListener("change", (e) => {
+  // 23/10/2026: ao marcar/desmarcar uma PASTA, pergunta sobre as listas ativas dela
+  // (as que não começam com Z), incluindo as das subpastas.
+  const listasDaPasta = (id) => {
+    const p = dados.pastas.find((x) => x.id === id); if (!p) return [];
+    return p.listas.concat(...dados.pastas.filter((x) => x.pai === id).map((x) => listasDaPasta(x.id)));
+  };
+  $("#arvore").addEventListener("change", async (e) => {
     const cb = e.target.closest("[data-k]"); if (!cb) return;
-    cb.checked ? marcadas.add(cb.dataset.k) : marcadas.delete(cb.dataset.k);
+    const k = cb.dataset.k;
+    if (!k.startsWith("folder:")) {
+      cb.checked ? marcadas.add(k) : marcadas.delete(k);
+      return desenharArvore();
+    }
+    const id = k.slice(7), pasta = dados.pastas.find((x) => x.id === id);
+    const nome = esc(pasta ? pasta.nome : id);
+    const ativas = listasDaPasta(id).filter((l) => !/^\s*z/i.test(l.nome));
+    if (cb.checked) {
+      const r = await BPMS.modal({ titulo: "Selecionar a pasta",
+        html: `Pasta <b>${nome}</b>.<br>Quer marcar também as <b>${ativas.length}</b> lista(s) ativa(s) dela (as que não começam com Z)?`
+          + (ativas.length ? `<ul style="max-height:180px;overflow:auto">${ativas.map((l) => `<li>${esc(l.nome)}</li>`).join("")}</ul>` : ""),
+        opcoes: [{ rotulo: "Cancelar", valor: null, estilo: "neutro" }, { rotulo: "Só a pasta", valor: "pasta", estilo: "neutro" },
+                 ...(ativas.length ? [{ rotulo: "Pasta e listas ativas", valor: "tudo" }] : [])] });
+      if (!r) { cb.checked = false; return; }
+      marcadas.add(k);
+      if (r === "tudo") ativas.forEach((l) => marcadas.add(`list:${l.id}`));
+    } else {
+      const marcadasDela = listasDaPasta(id).filter((l) => marcadas.has(`list:${l.id}`));
+      const r = await BPMS.modal({ titulo: "Retirar a seleção da pasta",
+        html: `Retirar a seleção da pasta <b>${nome}</b>?` + (marcadasDela.length ? `<br>Ela tem <b>${marcadasDela.length}</b> lista(s) marcada(s).` : ""),
+        opcoes: [{ rotulo: "Cancelar", valor: null, estilo: "neutro" },
+                 ...(marcadasDela.length ? [{ rotulo: "Só a pasta", valor: "pasta", estilo: "neutro" }, { rotulo: "Pasta e listas", valor: "tudo" }]
+                                         : [{ rotulo: "Retirar", valor: "pasta" }])] });
+      if (!r) { cb.checked = true; return; }
+      marcadas.delete(k);
+      if (r === "tudo") marcadasDela.forEach((l) => marcadas.delete(`list:${l.id}`));
+    }
     desenharArvore();
   });
   $("#arvore").addEventListener("click", (e) => { if (e.target.matches("summary input")) e.stopPropagation(); });
