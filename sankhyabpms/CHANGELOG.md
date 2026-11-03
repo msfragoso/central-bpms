@@ -8,6 +8,13 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.3.1 — 03/11/2026
+- Agenda semanal: o e-mail mostra a tarefa pai numa etiqueta acima da subtarefa, em
+  "Resumo da Demanda". Não aparece quando o pai é Atendimento Base, mês (ex.: 2026-10
+  Outubro) ou quando só repete o nome da subtarefa.
+- Conferência de OS: a janela do OM que ficava atrás da tela é minimizada depois de
+  conectar, e volta ao normal quando precisa de login.
+
 ## 1.3.0 — 28/10/2026
 - Nova tela **Conferência Planilhas**: cruza as tarefas do ClickUp com Apontamento de
   planilha (Bonificado, Planilha - Serviços, Treinamento, Faturado) com a PLANILHA DE

@@ -79,6 +79,24 @@ class _Om:
             # Logado e sem a Consulta de OS aberta: abre a tela uma vez por sessão.
             if self.sessao and not self._consulta_pronta() and                     getattr(self, "_abriu_consulta_em", None) != self.sessao["mgeSession"] and                     time.time() - self.sessao.get("quando", 0) > 5:
                 self._abrir_tela_consulta()
+            # 29/10/2026 (Fragoso): com o login feito e a Consulta de OS pronta, a janela do OM
+            # sai da frente (minimizada); só volta quando precisar de login de novo.
+            if self._consulta_pronta() and getattr(self, "_minimizada_em", None) != self.sessao["mgeSession"]:
+                self._minimizada_em = self.sessao["mgeSession"]
+                self._janela("minimized")
+        except Exception:
+            pass
+
+    def _janela(self, estado):
+        """Minimiza ("minimized") ou traz de volta ("normal") a janela do OM. Thread do Playwright."""
+        try:
+            pagina = self._ctx.pages[0]
+            cdp = self._ctx.new_cdp_session(pagina)
+            wid = cdp.send("Browser.getWindowForTarget")["windowId"]
+            cdp.send("Browser.setWindowBounds", {"windowId": wid, "bounds": {"windowState": estado}})
+            cdp.detach()
+            if estado == "normal":
+                pagina.bring_to_front()
         except Exception:
             pass
 
@@ -204,8 +222,8 @@ class _Om:
             pagina = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
             if "skw.sankhya.com.br" not in (pagina.url or ""):
                 pagina.goto(URL_OM, wait_until="domcontentloaded", timeout=60000)
-            pagina.bring_to_front()
             if self.estado != "conectado":
+                self._janela("normal")   # precisa do login: a janela volta para a frente
                 self.estado = "aguardando_login"
                 self.mensagem = "Faça o login na janela do Sankhya-OM que abriu."
             return True
@@ -237,6 +255,8 @@ class _Om:
                 break
             paginas[0].wait_for_timeout(500)
         if not (self.sktk_consulta and self.sktk_consulta[0] == mge):
+            self._janela("normal")   # o usuário precisa da janela para abrir a tela
+            self._minimizada_em = None
             raise RuntimeError("Abra a tela 'Consulta de OS' pelo menu do Sankhya-OM, na janela da Central "
                                "(não precisa filtrar nem aplicar), e tente de novo.")
         return self.sktk_consulta[1]

@@ -44,6 +44,10 @@ ARQ_LOG = "agenda_envios.jsonl"
 
 ESTADO = {"parceiros": {}, "de": None, "ate": None}
 EMAIL_RE = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
+# 03/11/2026 (Fragoso): tarefa pai no e-mail, menos as que só organizam o ClickUp por dentro
+PAI_MES = re.compile(r"^\d{4}-\d{2}\b")                # "2026-11 Novembro"
+PAI_NUMERO = re.compile(r"^\d+\s*-\s*")                # "3- Desenvolvimento" -> "Desenvolvimento"
+PAIS_INTERNOS = {"ATENDIMENTOBASE", "ATENDIMENTODABASE"}
 
 
 def _norm(s):
@@ -108,6 +112,30 @@ def _smtp_config():
             "delay": cfg.getfloat("envio", "delay_segundos", fallback=30.0)}
 
 
+def _pai_para_email(nome_pai, nome_tarefa):
+    """Nome da tarefa pai que vale mostrar ao parceiro; "" quando só repete a tarefa ou é organização interna."""
+    if not nome_pai or PAI_MES.match(nome_pai):
+        return ""
+    pai = PAI_NUMERO.sub("", nome_pai).strip()
+    n_pai, n_tarefa = _norm(pai), _norm(nome_tarefa)
+    if n_pai in PAIS_INTERNOS or n_pai in n_tarefa or n_tarefa in n_pai:
+        return ""
+    return pai
+
+
+def _nome_do_pai(tk, nomes, cv, api, headers):
+    """nomes = id -> nome das tarefas já lidas; pai fora da visualização é buscado uma vez só."""
+    pid = tk.get("parent")
+    if not pid:
+        return ""
+    if pid not in nomes:
+        try:
+            nomes[pid] = cv._get(f"{api}/task/{pid}", headers).get("name")
+        except Exception:
+            nomes[pid] = ""
+    return nomes[pid] or ""
+
+
 def _mensagem(remetente, nome, para, cc, assunto, corpo_html):
     msg = MIMEMultipart("alternative")
     msg["From"] = f"{nome} <{remetente}>"
@@ -150,6 +178,7 @@ def montar(req):
         t.log(f"  {len(contatos)} parceiro(s) na planilha.")
 
         por_parceiro, removidas = {}, []
+        nomes = {tk.get("id"): tk.get("name") for tk in tarefas}
         for tk in tarefas:
             cfs = {c.get("id"): c for c in tk.get("custom_fields", [])}
             parceiro = cv._valor_dropdown(cfs.get(FIELD_PARCEIRO, {})) or ""
@@ -165,6 +194,7 @@ def montar(req):
             por_parceiro.setdefault(parceiro, []).append({
                 "Consultor": ", ".join(_titulo(c) for c in consultores),
                 "Atividade": tk.get("name") or "",
+                "Tarefa Pai": _pai_para_email(_nome_do_pai(tk, nomes, cv, CLICKUP_API, CLICKUP_HEADERS), tk.get("name")),
                 "Data": venc.strftime("%d/%m/%Y") if venc else "",
                 "Dia da Semana": DIAS[venc.weekday()] if venc else "",
                 "Período": cv._valor_dropdown(cfs.get(FIELD_PERIODO, {})) or "",

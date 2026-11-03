@@ -130,6 +130,16 @@ CARD_ONLY_TEMPLATE = '''
 '''
 
 
+def celula_demanda(r, sty):
+    """03/11/2026 (Fragoso): tarefa pai numa etiqueta branca, com a subtarefa logo abaixo."""
+    pai = r.get("Tarefa Pai")
+    if not pai:
+        return r["Atividade"]
+    return (f'<div style="background-color:#ffffff; color:#1f2a44; border:1px solid {sty["border"]}; border-radius:4px; '
+            f'padding:2px 6px; margin-bottom:4px; font-size:11px; font-weight:bold;">{pai}</div>'
+            f'&#8627; {r["Atividade"]}')
+
+
 def build_table(rows):
     trs = []
     for i, r in enumerate(rows, start=1):
@@ -143,7 +153,7 @@ def build_table(rows):
         <tr style="background-color:{sty['bg']};">
           <td style="padding:9px 10px; border:1px solid {sty['border']}; color:{sty['fg']}; font-size:13px; text-align:center;">{i}</td>
           <td style="padding:9px 10px; border:1px solid {sty['border']}; color:{sty['fg']}; font-size:13px;">{r['Consultor']}</td>
-          <td style="padding:9px 10px; border:1px solid {sty['border']}; color:{sty['fg']}; font-size:13px;">{r['Atividade']}</td>
+          <td style="padding:9px 10px; border:1px solid {sty['border']}; color:{sty['fg']}; font-size:13px;">{celula_demanda(r, sty)}</td>
           <td style="padding:9px 10px; border:1px solid {sty['border']}; color:{sty['fg']}; font-size:13px; white-space:nowrap;">{data_fmt}</td>
           <td style="padding:9px 10px; border:1px solid {sty['border']}; color:{sty['fg']}; font-size:13px; white-space:nowrap;">{periodo}</td>
           <td style="padding:9px 10px; border:1px solid {sty['border']}; color:{sty['fg']}; font-size:13px;">{usuario}</td>
