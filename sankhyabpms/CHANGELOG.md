@@ -8,6 +8,11 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.7.2 — 04/11/2026
+- Instalador e desinstalador do Lançar ClickUp: encerram de verdade o serviço aberto, que antes
+  continuava rodando a versão antiga depois de instalar. A Central BP-MS no mesmo computador
+  não é encerrada.
+
 ## 1.7.1 — 04/11/2026
 - Lançar ClickUp: funciona para quem acessa só algumas pastas e listas do PMO BP-MS. Parceiros,
   FAPs, X-Interno e X-Horas Cruzadas passam a usar o que a conta enxerga, e uma lista sem

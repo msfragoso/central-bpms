@@ -20,6 +20,28 @@ MOTORES = r"C:\sankhya_integracao"
 DIST = os.path.join(AQUI, "dist")
 PACOTE = os.path.join(DIST, "Lancar_ClickUp_BP-MS")
 
+# 04/11/2026 (caso Adriano): o Lançar abre com caminho relativo ("servico\\servidor.py"), então procurar
+# pelo nome da pasta não achava o serviço, que seguia rodando a versão antiga depois de instalar.
+# Agora também encerra quem está na porta do Lançar, menos a Central BP-MS (ela tem conferencia.html).
+PARAR_SERVICO = r'''# inicio-parar-servico
+$porta = 8766
+$servicos = @(Get-CimInstance Win32_Process -Filter "Name like 'python%'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*servidor.py*" })
+$parar = @($servicos | Where-Object { $_.CommandLine -like "*Lancar_ClickUp_BP-MS*" } | ForEach-Object { $_.ProcessId })
+$donos = @(Get-NetTCPConnection -LocalPort $porta -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $_.OwningProcess })
+if ($donos.Count -gt 0) {
+    $ehCentral = $false
+    try { $ehCentral = (Invoke-WebRequest "http://127.0.0.1:$porta/conferencia.html" -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200 } catch {}
+    if (-not $ehCentral) {
+        $parar += @($servicos | Where-Object { $donos -contains $_.ProcessId } | ForEach-Object { $_.ProcessId })
+    }
+}
+if ($parar.Count -gt 0) {
+    $parar | Select-Object -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+}
+# fim-parar-servico'''
+
 INSTALAR_PS1 = r'''# Instalador do "Lançar ClickUp BP-MS" (23/10/2026).
 # Faz tudo sozinho: Python (se faltar), bibliotecas, cópia para pasta fixa, atalhos e token.
 $ErrorActionPreference = "Stop"
@@ -88,9 +110,7 @@ Passo 2 "Instalando as bibliotecas (requests, keyring)..."
 if ($LASTEXITCODE -ne 0) { Falha "o pip não instalou as bibliotecas. Verifique a internet ou o proxy da empresa." }
 
 Passo 3 "Copiando o programa..."
-Get-CimInstance Win32_Process -Filter "Name like 'python%'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like "*Lancar_ClickUp_BP-MS*servidor.py*" } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+@@PARAR_SERVICO@@
 New-Item -ItemType Directory -Force -Path $destino | Out-Null
 foreach ($item in @("central", "motores", "configurar_token.py", "configurar_token.vbs", "Abrir_Lancar_ClickUp.vbs", "Configurar_Token_ClickUp.bat", "Desinstalar.bat", "desinstalar.ps1", "LEIA-ME.txt")) {
     Copy-Item -Path (Join-Path $origem $item) -Destination $destino -Recurse -Force
@@ -212,9 +232,7 @@ DESINSTALAR_PS1 = r'''# Remove o Lançar ClickUp BP-MS (programa e atalhos). O t
 $destino = Join-Path $env:LOCALAPPDATA "Lancar_ClickUp_BP-MS"
 $r = Read-Host "Remover o Lançar ClickUp BP-MS deste computador? (S/N)"
 if ($r -notmatch '^[sS]') { exit }
-Get-CimInstance Win32_Process -Filter "Name like 'python%'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like "*Lancar_ClickUp_BP-MS*servidor.py*" } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+@@PARAR_SERVICO@@
 Remove-Item (Join-Path ([Environment]::GetFolderPath("Desktop")) "Lançar ClickUp BP-MS.lnk") -ErrorAction SilentlyContinue
 Remove-Item (Join-Path ([Environment]::GetFolderPath("Programs")) "Lançar ClickUp BP-MS") -Recurse -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
@@ -450,13 +468,13 @@ raiz.mainloop()
 ''')
     # --- instalador completo (23/10/2026): um duplo clique instala Python (se faltar),
     # bibliotecas, programa em %LOCALAPPDATA%, atalhos e token.
-    escrever(os.path.join(PACOTE, "instalar.ps1"), INSTALAR_PS1, bom=True)
+    escrever(os.path.join(PACOTE, "instalar.ps1"), INSTALAR_PS1.replace("@@PARAR_SERVICO@@", PARAR_SERVICO), bom=True)
     escrever(os.path.join(PACOTE, "Instalar_Lancar_ClickUp.bat"), INSTALAR_BAT)
     escrever(os.path.join(PACOTE, "Configurar_Token_ClickUp.bat"), CONFIG_TOKEN_BAT)
     escrever(os.path.join(PACOTE, "configurar_token.vbs"), CONFIGURAR_TOKEN_VBS)
     escrever(os.path.join(PACOTE, "Abrir_Lancar_ClickUp.vbs"), ABRIR_VBS)
     escrever(os.path.join(PACOTE, "Desinstalar.bat"), DESINSTALAR_BAT)
-    escrever(os.path.join(PACOTE, "desinstalar.ps1"), DESINSTALAR_PS1, bom=True)
+    escrever(os.path.join(PACOTE, "desinstalar.ps1"), DESINSTALAR_PS1.replace("@@PARAR_SERVICO@@", PARAR_SERVICO), bom=True)
     escrever(os.path.join(PACOTE, "LEIA-ME.txt"), LEIA_ME, bom=True)
 
     # 04/11/2026: a lista de parceiros vem do ClickUp, com o token de quem usa (atualizar_opcoes_parceiro).
