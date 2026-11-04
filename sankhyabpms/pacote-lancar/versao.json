@@ -1,4 +1,5 @@
 {
- "versao": "1.6.0",
- "sha256": "6ac78c29bacb75741a87ed11651022ea41c1e417d03f43ffc5fb6dd2867e8dc2"
+ "versao": "1.6.1",
+ "sha256": "e97a3a5ecb87df0fa6653d6073d94fccd87c0ef42e36352c0d94d6ba0e4f3c93",
+ "novidades": "## 1.6.1 — 04/11/2026\n- Lançar ClickUp: a atualização online agora baixa o pacote anexado à versão (Release) no\n  GitHub. O anexo é criado automaticamente ao publicar uma versão que muda o Lançar."
 }

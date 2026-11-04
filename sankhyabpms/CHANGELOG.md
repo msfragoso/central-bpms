@@ -8,6 +8,10 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.6.1 — 04/11/2026
+- Lançar ClickUp: a atualização online agora baixa o pacote anexado à versão (Release) no
+  GitHub. O anexo é criado automaticamente ao publicar uma versão que muda o Lançar.
+
 ## 1.6.0 — 04/11/2026
 - Atualização online, na Central e no pacote Lançar ClickUp: ao abrir a tela, aparece
   "Atualizar agora" quando há versão nova no GitHub. Com a confirmação, baixa e confere o

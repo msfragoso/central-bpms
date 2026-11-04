@@ -331,6 +331,13 @@ def limpar_py(caminho, esvaziar=()):
     escrever(caminho, ast.unparse(arvore) + "\n")
 
 
+def novidades_da_versao():
+    with open(os.path.join(AQUI, "CHANGELOG.md"), encoding="utf-8") as f:
+        texto = f.read()
+    achou = re.search(r"(?ms)^## " + re.escape(versao_do_pacote()) + r"\b.*?(?=^## |\Z)", texto)
+    return achou.group(0).strip() if achou else ""
+
+
 def versao_do_pacote():
     with open(os.path.join(AQUI, "web", "assets", "comum.js"), encoding="utf-8") as f:
         return re.search(r'const VERSAO = "(\d+\.\d+\.\d+)"', f.read()).group(1)
@@ -470,11 +477,12 @@ raiz.mainloop()
                 z.write(cam, os.path.relpath(cam, DIST))
     # 23/10/2026: o passo a passo também fica ao lado do .zip, para mandar junto
     shutil.copy2(os.path.join(PACOTE, "LEIA-ME.txt"), os.path.join(DIST, "Como instalar - Lancar ClickUp BP-MS.txt"))
-    # 04/11/2026: versao.json vai junto com o .zip para pacote-lancar/ no GitHub (atualização online).
+    # 04/11/2026: versao.json e o .zip vão para pacote-lancar/; o GitHub os anexa à versão (Release).
     with open(zip_path, "rb") as f:
         sha = hashlib.sha256(f.read()).hexdigest()
     with open(os.path.join(DIST, "versao.json"), "w", encoding="utf-8") as f:
-        json.dump({"versao": versao_do_pacote(), "sha256": sha}, f, ensure_ascii=False, indent=1)
+        json.dump({"versao": versao_do_pacote(), "sha256": sha, "novidades": novidades_da_versao()},
+                  f, ensure_ascii=False, indent=1)
     print("Pacote:", zip_path, versao_do_pacote(), sha)
 
 

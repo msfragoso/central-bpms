@@ -8,8 +8,8 @@ pacote, guarda cópia do que vai trocar em dados/atualizacoes e reinicia.
 
 - Central: baixa a etiqueta vX.Y.Z do repositório. Não troca config.json, dados/ e dist/.
   Os motores de C:\\sankhya_integracao ficam fora do repositório e não são atualizados.
-- Pacote Lançar (config.json com "atualizacao": "lancar"): baixa o .zip publicado em
-  pacote-lancar/, que já traz os motores sem nomes e e-mails (ver criar_pacote_lancar.py).
+- Pacote Lançar (config.json com "atualizacao": "lancar"): baixa o .zip anexado à versão
+  (Release) no GitHub, que já traz os motores sem nomes e e-mails (ver criar_pacote_lancar.py).
   Não troca central/config.json e central/dados/; o token fica no cofre do Windows.
 """
 import hashlib
@@ -31,7 +31,8 @@ from nucleo import CONFIG, GERENTE, PASTA_DADOS, RAIZ, ErroUsuario, exigir_confi
 REPO = "msfragoso/central-bpms"
 URL_RAW = f"https://raw.githubusercontent.com/{REPO}/main/sankhyabpms/"
 URL_ZIP = f"https://github.com/{REPO}/archive/refs/tags/v{{versao}}.zip"
-URL_PACOTE = f"https://raw.githubusercontent.com/{REPO}/v{{versao}}/sankhyabpms/pacote-lancar/Lancar_ClickUp_BP-MS.zip"
+URL_VERSAO_PACOTE = f"https://github.com/{REPO}/releases/latest/download/versao.json"
+URL_PACOTE = f"https://github.com/{REPO}/releases/download/v{{versao}}/Lancar_ClickUp_BP-MS.zip"
 PASTA_PACOTE = "Lancar_ClickUp_BP-MS"
 ARQ_VERSAO = "web/assets/comum.js"
 LIMITE_ZIP = 50 * 1024 * 1024
@@ -115,7 +116,7 @@ def novidades(changelog, local, nova):
 
 def _consultar_github(m, local):
     if m == "lancar":
-        info = json.loads(_baixar(URL_RAW + "pacote-lancar/versao.json").decode("utf-8"))
+        info = json.loads(_baixar(URL_VERSAO_PACOTE).decode("utf-8"))
         return {"versao_nova": info["versao"], "sha256": info["sha256"], "novidades": info.get("novidades", "")}
     achou = RE_VERSAO.search(_baixar(URL_RAW + ARQ_VERSAO).decode("utf-8"))
     if not achou:

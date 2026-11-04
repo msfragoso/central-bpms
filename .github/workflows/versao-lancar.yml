@@ -1,0 +1,33 @@
+# Cria a versão (Release) do Lançar ClickUp com o pacote anexado, de onde ele se atualiza online.
+# Só cria quando pacote-lancar/versao.json é da etiqueta enviada, ou seja, quando o Lançar mudou.
+name: Versao do Lancar ClickUp
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  anexar-pacote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Criar a versao com o pacote anexado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd sankhyabpms/pacote-lancar
+          versao="v$(jq -r .versao versao.json)"
+          if [ "$versao" != "$TAG" ]; then
+            echo "O pacote é $versao e a etiqueta é $TAG: o Lançar não mudou, nada a anexar."
+            exit 0
+          fi
+          esperado="$(jq -r .sha256 versao.json)"
+          echo "$esperado  Lancar_ClickUp_BP-MS.zip" | sha256sum -c -
+          jq -r '.novidades // ""' versao.json > novidades.txt
+          gh release create "$TAG" Lancar_ClickUp_BP-MS.zip versao.json \
+            --title "Lançar ClickUp $TAG" --notes-file novidades.txt --latest
