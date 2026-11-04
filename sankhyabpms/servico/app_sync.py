@@ -95,13 +95,96 @@ class _JanelaFalsa:
 
 
 # ============================================================================
-# CONSULTOR FORA DO PROJETO (08/10/2026, "Com confirmação")
+# CONSULTOR FORA DO PROJETO (08/10/2026; automático desde 03/11/2026, pedido do Fragoso)
 # ============================================================================
 # O sync_engine só anota em linha["_fora_do_projeto"] os casos "não está
-# vinculado ao projeto no Experience". Aqui eles viram uma lista na tela; o
-# consultor só é incluído no projeto quando o usuário clica e confirma.
+# vinculado ao projeto no Experience". Depois do sync, o consultor é incluído no
+# projeto sem perguntar (_cadastrar_fora), o sync roda de novo só para aquela FAP
+# e o resultado aparece na tela e no log. O que não der certo fica na tela com o
+# motivo e o botão de tentar de novo.
 
-ESTADO_FORA = {}   # chave -> caso (só os da última execução podem ser cadastrados)
+ESTADO_FORA = {}   # chave -> caso que não foi cadastrado e pode ser tentado de novo
+
+
+def _incluir_e_registrar(token, caso, t, origem):
+    """Inclui o consultor no projeto e grava em dados/inclusoes_consultores.jsonl. Devolve (ok, mensagem)."""
+    import json
+    from experience_api.persons import incluir_consultor_no_projeto
+    from nucleo import dados_arquivo
+
+    t.log(f"Incluindo {caso['consultor']} ({caso['email']}) no projeto FAP {caso['fap']}, "
+          f"processo {caso['process_id']}...")
+    ok, msg = incluir_consultor_no_projeto(token, caso["implantation_id"], caso["email"], caso["process_id"])
+    with open(dados_arquivo("inclusoes_consultores.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "ok": ok, "origem": origem,
+                            "mensagem": msg, **{k: caso[k] for k in ("implantation_id", "fap", "consultor",
+                                                                      "email", "process_id", "datas")}},
+                           ensure_ascii=False) + "\n")
+    t.log(("  OK: " if ok else "  NÃO incluído: ") + msg)
+    return ok, msg
+
+
+def _cadastrar_fora(fora, t, rerodar):
+    """
+    Cadastra os consultores fora do projeto e roda o sync de novo uma vez por FAP.
+    rerodar(fap, de_iso, ate_iso) devolve os casos que continuam fora. Anota
+    "situacao" e "mensagem" em cada caso; os não cadastrados ficam em ESTADO_FORA.
+    """
+    import experience_api as exp
+    from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
+
+    ESTADO_FORA.clear()
+    if not fora:
+        return
+    t.log(f"\nCadastro automático: {len(fora)} consultor(es) fora do projeto no Experience.")
+    try:
+        token = exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
+    except Exception:
+        token = None
+    por_fap = {}
+    for c in fora:
+        if not c["email"]:
+            ok, msg = False, "sem e-mail na tarefa do ClickUp: cadastre pelo Experience"
+        elif not token:
+            ok, msg = False, "falha no login do Experience"
+        else:
+            try:
+                ok, msg = _incluir_e_registrar(token, c, t, "automatico")
+            except Exception as e:
+                ok, msg = False, f"erro ao incluir: {e}"
+        c.update(situacao="CADASTRADO" if ok else "NÃO CADASTRADO", mensagem=msg)
+        if ok:
+            por_fap.setdefault(c["fap"], []).append(c)
+        else:
+            t.log(f"  {c['consultor']} (FAP {c['fap']}) NÃO cadastrado: {msg}")
+            ESTADO_FORA[c["chave"]] = c
+    for fap, casos in por_fap.items():
+        datas = sorted(d for c in casos for d in c["datas"])
+        if not datas:
+            for c in casos:
+                c["mensagem"] += ". Rode o sync para criar o lançamento"
+            continue
+        t.log(f"Rodando o sync da FAP {fap} de {datas[0]} a {datas[-1]}...")
+        try:
+            continuam = {r["chave"] for r in rerodar(fap, datas[0], datas[-1])}
+            nota = ". Sync da FAP rodado de novo; confira o relatório no log"
+        except Exception as e:
+            t.log(f"  Falha ao rodar o sync da FAP {fap}: {e}")
+            continuam, nota = set(), ". O sync da FAP falhou: rode de novo para criar o lançamento"
+        for c in casos:
+            c["mensagem"] += (". O sync ainda não achou o consultor no projeto: confira no Experience"
+                              if c["chave"] in continuam else nota)
+
+
+def _achados_os(ja=()):
+    """OS com data diferente; cada execução do sync limpa a lista, então soma o que já foi lido."""
+    try:
+        from clickup_sync import os_data_diferente
+        novos = list(os_data_diferente.ACHADOS)
+    except Exception:
+        novos = []
+    vistos = {a.get("lancamento_id") for a in ja}
+    return list(ja) + [a for a in novos if a.get("lancamento_id") not in vistos]
 
 
 def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t, consultor=None):
@@ -136,8 +219,6 @@ def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t, con
             c["tarefas"].append(f["task_id"])
     for c in casos.values():
         c["datas"].sort()
-    ESTADO_FORA.clear()
-    ESTADO_FORA.update(casos)
     return list(casos.values())
 
 
@@ -169,21 +250,28 @@ def executar(req):
         cache_listas = {"dados": _cache["listas"]}
         fora = _rodar_fluxo(m, parceiro or None, ini.isoformat(), fim.isoformat(), modelo_filtro, cache_listas, t,
                             consultor=consultor)
-        logs = [p for p in glob.glob(os.path.join(PASTAS["raiz"], "logs", "log_*.txt"))
-                if os.path.getmtime(p) >= inicio - 1]
-        if logs:
-            t.adicionar_arquivo("Log completo (.txt)", max(logs, key=os.path.getmtime))
+        # 26/10/2026: OS apontada com data diferente do lançamento (também vai por e-mail)
+        os_data = _achados_os()
+        leituras = {"os": os_data}
+
+        def rerodar(fap, de_iso, ate_iso):
+            restantes = _rodar_fluxo(m, fap, de_iso, ate_iso, None, cache_listas, t, consultor=consultor)
+            leituras["os"] = _achados_os(leituras["os"])
+            return restantes
+
+        _cadastrar_fora(fora, t, rerodar)
+        os_data = leituras["os"]
+        logs = sorted((p for p in glob.glob(os.path.join(PASTAS["raiz"], "logs", "log_*.txt"))
+                       if os.path.getmtime(p) >= inicio - 1), key=os.path.getmtime)
+        for i, p in enumerate(logs):
+            t.adicionar_arquivo("Log completo (.txt)" if i == 0 else f"Log do sync após cadastro {i} (.txt)", p)
         marcar_uso("sync")
         msg = "Execução finalizada. Confira o relatório final no log."
-        if fora:
-            msg += (f" {len(fora)} consultor(es) fora do projeto no Experience: veja a lista abaixo "
-                    "para cadastrar e lançar.")
-        # 26/10/2026: OS apontada com data diferente do lançamento (também vai por e-mail)
-        try:
-            from clickup_sync import os_data_diferente
-            os_data = list(os_data_diferente.ACHADOS)
-        except Exception:
-            os_data = []
+        feitos = sum(1 for c in fora if c.get("situacao") == "CADASTRADO")
+        if feitos:
+            msg += f" {feitos} consultor(es) cadastrado(s) automaticamente no projeto: veja abaixo."
+        if len(fora) > feitos:
+            msg += f" ⚠ {len(fora) - feitos} consultor(es) NÃO cadastrado(s): veja o motivo abaixo."
         if os_data:
             msg += f" ⚠ {len(os_data)} OS apontada(s) com data diferente do lançamento: veja abaixo."
         return {"mensagem": msg, "resultado": {"fora_do_projeto": fora, "os_data_diferente": os_data}}
@@ -413,9 +501,9 @@ def sem_os_excluir(req):
 @rota("POST", "/api/sync/incluir-consultor")
 def incluir_consultor(req):
     """
-    Inclui no projeto do Experience (como Consultor(a)/Analista, no processo da
-    tarefa) o consultor que o último sync apontou como fora do projeto e roda o
-    sync de novo só para aquela FAP e aquelas datas, o que cria o lançamento.
+    Tenta de novo o cadastro que o sync automático não conseguiu: inclui no
+    projeto do Experience (como Consultor(a)/Analista, no processo da tarefa) e
+    roda o sync de novo só para aquela FAP e aquelas datas, o que cria o lançamento.
     Cada inclusão fica em dados/inclusoes_consultores.jsonl.
     """
     exigir_confirmacao(req)
@@ -427,24 +515,13 @@ def incluir_consultor(req):
         raise ErroUsuario(f"Sem e-mail de {caso['consultor']} na tarefa do ClickUp: cadastre pelo Experience.")
 
     def trabalho(t):
-        import json
         import experience_api as exp
         from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
-        from experience_api.persons import incluir_consultor_no_projeto
-        from nucleo import dados_arquivo
 
         token = exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
         if not token:
             raise RuntimeError("Falha no login do Experience.")
-        t.log(f"Incluindo {caso['consultor']} ({caso['email']}) no projeto FAP {caso['fap']}, "
-              f"processo {caso['process_id']}...")
-        ok, msg = incluir_consultor_no_projeto(token, caso["implantation_id"], caso["email"], caso["process_id"])
-        with open(dados_arquivo("inclusoes_consultores.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "ok": ok,
-                                "mensagem": msg, **{k: caso[k] for k in ("implantation_id", "fap", "consultor",
-                                                                          "email", "process_id", "datas")}},
-                               ensure_ascii=False) + "\n")
-        t.log(("  OK: " if ok else "  NÃO incluído: ") + msg)
+        ok, msg = _incluir_e_registrar(token, caso, t, "manual")
         if not ok:
             raise RuntimeError(f"Consultor não incluído: {msg}")
         ESTADO_FORA.pop(chave, None)

@@ -67,6 +67,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topo.menu-aberto .nav a { padding: 10px 12px; font-size: 14px; }
 .topo.menu-aberto .pilula { margin-left: auto; }
 .topo.menu-aberto .nav a + a { border-top: 1px solid var(--linha); border-radius: 0; }
+.nav .ico { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
 .nav a:hover { background: var(--bg); color: var(--texto); }
 .nav a.ativo { background: var(--local-claro); color: var(--local); }
 .pilula { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--bg); color: var(--suave); border: 1px solid var(--linha); white-space: nowrap; }
@@ -179,11 +180,21 @@ td.centro, th.centro { text-align: center; }
 .toast.erro { background: var(--perigo); color: #fff; } .toast.ok { background: var(--local); color: #fff; }
 
 /* ---------- início (cards da Central) ---------- */
-.processos { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); }
-.processo { display: flex; flex-direction: column; gap: 6px; }
-.processo h3 { margin: 0; font-size: 16px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.processo p { margin: 0; color: var(--suave); flex: 1; }
-.processo .acoes { margin-top: 8px; }
+.processos { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+/* 04/11/2026 (Fragoso): no Início só o nome do módulo; o cartão inteiro abre a tela e a explicação fica dentro dela */
+.processo { position: relative; display: flex; align-items: center; min-height: 68px; transition: box-shadow .15s, transform .15s; }
+.processo:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.12); }
+.processo h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.processo .ultimo-uso { display: none; }
+.processo .abrir { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 12px; }
+.ico { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.processo .ico { box-sizing: content-box; width: 20px; height: 20px; padding: 8px; border-radius: 10px; color: var(--local); background: color-mix(in srgb, var(--local) 14%, transparent); }
+.links-sankhya .ico { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
+.editando .processo .abrir { pointer-events: none; }
+.editando .processo .abrir span { pointer-events: auto; }
+.processo .abrir::after { content: ""; position: absolute; inset: 0; }
+.editando .processo .abrir::after { display: none; }
+.explicacao { margin: -6px 0 14px; color: var(--suave); max-width: 90ch; }
 .legenda { display: flex; gap: 14px; color: var(--suave); font-size: 12px; flex-wrap: wrap; }
 .legenda span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; background: var(--local); vertical-align: -1px; }
 .legenda span.claude::before { background: var(--claude); }

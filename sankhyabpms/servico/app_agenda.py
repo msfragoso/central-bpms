@@ -47,7 +47,7 @@ EMAIL_RE = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
 # 03/11/2026 (Fragoso): tarefa pai no e-mail, menos as que só organizam o ClickUp por dentro
 PAI_MES = re.compile(r"^\d{4}-\d{2}\b")                # "2026-11 Novembro"
 PAI_NUMERO = re.compile(r"^\d+\s*-\s*")                # "3- Desenvolvimento" -> "Desenvolvimento"
-PAIS_INTERNOS = {"ATENDIMENTOBASE", "ATENDIMENTODABASE"}
+PAIS_INTERNOS = {"ATENDIMENTOBASE", "ATENDIMENTODABASE", "AGENDAFIXA"}
 
 
 def _norm(s):

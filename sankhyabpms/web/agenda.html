@@ -20,7 +20,9 @@
       <p data-texto="agenda.subtitulo">Confirmação da Agenda de Serviço · visualização "Agrupado p/Enviar" do ClickUp · enviado pelo seu Gmail</p>
     </div>
     <span class="ultimo-uso" data-ultimo-uso="agenda"></span>
+    <button class="btn secundario pequeno" id="btn-agenda" title="Pedir ao Claude, como antes">ou pelo Claude</button>
   </div>
+  <p class="explicacao" data-texto="card.agenda.descricao">Monta a Confirmação da Agenda de Serviço da próxima semana a partir do ClickUp e envia pelo seu Gmail, com teste e confirmação.</p>
 
   <section class="card faixa">
     <h2>Semana</h2>
@@ -64,6 +66,11 @@
 </main>
 <script src="assets/comum.js"></script>
 <script>
+  BPMS.$("#btn-agenda").onclick = () => {
+    const pedido = "Envia a agenda da semana para os parceiros.";
+    navigator.clipboard?.writeText(pedido).catch(() => {});
+    window.open("https://claude.ai/new?q=" + encodeURIComponent(pedido), "_blank", "noopener");
+  };
 (() => {
   const { $, $$, get, post, esc, toast, confirmar, mascaraData, dataValida } = BPMS;
   BPMS.montarTopo("agenda");

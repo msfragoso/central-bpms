@@ -35,6 +35,7 @@
     </div>
     <span class="ultimo-uso" data-ultimo-uso="sync"></span>
   </div>
+  <p class="explicacao" data-texto="card.sync.descricao">Lança, altera e exclui as tarefas do ClickUp no Experience, com log ao vivo.</p>
 
   <div class="grade duas">
     <section class="card faixa">
@@ -91,11 +92,11 @@
   </section>
 
   <section class="card faixa oculto" id="card-fora" style="margin-top:14px">
-    <h2 data-texto="sync.fora.titulo">Consultores fora do projeto no Experience</h2>
-    <p style="color:var(--suave);margin:-4px 0 12px" data-texto="sync.fora.descricao">O sync não lançou estas tarefas porque o consultor não está na equipe do projeto. "Cadastrar no projeto e lançar" inclui o consultor como Consultor(a)/Analista no processo da tarefa e roda o sync de novo só para essa FAP e essas datas. Nada é cadastrado sem a sua confirmação.</p>
+    <h2 data-texto="sync.fora.titulo">Consultores cadastrados no projeto pelo sync</h2>
+    <p style="color:var(--suave);margin:-4px 0 12px" data-texto="sync.fora.descricao">Estes consultores não estavam na equipe do projeto no Experience. O sync incluiu cada um como Consultor(a)/Analista no processo da tarefa e rodou de novo só para essa FAP e essas datas. O que não deu certo aparece com o motivo e o botão para tentar de novo.</p>
     <div class="tabela-caixa">
       <table>
-        <thead><tr><th>Consultor</th><th>E-mail</th><th>Parceiro</th><th>FAP</th><th>Processo</th><th>Datas</th><th>Tarefas</th><th></th></tr></thead>
+        <thead><tr><th>Consultor</th><th>E-mail</th><th>Parceiro</th><th>FAP</th><th>Processo</th><th>Datas</th><th>Tarefas</th><th>Situação</th></tr></thead>
         <tbody id="corpo-fora"></tbody>
       </table>
     </div>
@@ -171,18 +172,19 @@
 
   const travar = (sim) => { $("#btn-executar").disabled = sim; $("#btn-sem-os").disabled = sim; if (typeof desenharFora === "function") desenharFora(); };
 
-  // ---------------- consultor fora do projeto (cadastro só com confirmação)
+  // ---------------- consultor fora do projeto (cadastro automático; só "tentar de novo" pede confirmação)
   let fora = [], foraSituacao = {};
   const dataBr = (iso) => (iso || "").split("-").reverse().join("/");
   function desenharFora() {
     $("#card-fora").classList.toggle("oculto", !fora.length);
-    $("#corpo-fora").innerHTML = fora.map((c) => { const sit = foraSituacao[c.chave]; return `<tr>
+    $("#corpo-fora").innerHTML = fora.map((c) => { const sit = foraSituacao[c.chave] || c.situacao; return `<tr>
       <td>${esc(c.consultor)}</td><td>${c.email ? esc(c.email) : '<span class="etiqueta falhou">sem e-mail</span>'}</td>
       <td>${esc(c.parceiro)}</td><td>${esc(c.fap)}</td><td>${esc(c.process_id)}</td>
       <td>${c.datas.map(dataBr).map(esc).join(", ")}</td>
       <td>${c.tarefas.map((id) => `<a href="https://app.clickup.com/t/${encodeURIComponent(id)}" target="_blank" rel="noopener">#${esc(id)}</a>`).join(" ")}</td>
-      <td>${sit ? `<span class="etiqueta ${sit === "CADASTRADO" ? "enviada" : "falhou"}">${esc(sit)}</span>`
-        : `<button class="btn pequeno" data-fora="${esc(c.chave)}" ${c.email && !$("#btn-executar").disabled ? "" : "disabled"}>Cadastrar no projeto e lançar</button>`}</td></tr>`; }).join("");
+      <td><span class="etiqueta ${sit === "CADASTRADO" ? "enviada" : "falhou"}">${esc(sit || "")}</span>
+        ${c.mensagem && !foraSituacao[c.chave] ? `<br><span style="color:var(--suave);font-size:12px">${esc(c.mensagem)}</span>` : ""}
+        ${sit !== "CADASTRADO" && c.email ? `<br><button class="btn pequeno" style="margin-top:6px" data-fora="${esc(c.chave)}" ${$("#btn-executar").disabled ? "disabled" : ""}>Tentar de novo</button>` : ""}</td></tr>`; }).join("");
   }
   let foraEmCurso = null;
   $("#corpo-fora").addEventListener("click", async (e) => {
@@ -328,7 +330,8 @@
     const todas = !corpo.parceiro;
     const ok = await confirmar("Executar a sincronização?",
       `<b>Parceiro:</b> ${todas ? "<b>TODOS os parceiros</b>" : esc(corpo.parceiro)}<br><b>Consultor:</b> ${rotuloConsultor ? `<b>${esc(rotuloConsultor)}</b> (só as tarefas e os lançamentos ${marcados.length > 1 ? "deles" : "dele"})` : "todos"}<br><b>Período:</b> ${esc(corpo.de)} a ${esc(corpo.ate)}<br><b>Modelo:</b> ${esc(rotuloModelo)}${listas}`
-      + `<div class="aviso${todas ? " erro" : ""}">Vai <b>criar, alterar e excluir</b> apontamentos no Experience (inclusive órfãos e duplicatas) conforme o ClickUp.</div>`,
+      + `<div class="aviso${todas ? " erro" : ""}">Vai <b>criar, alterar e excluir</b> apontamentos no Experience (inclusive órfãos e duplicatas) conforme o ClickUp.</div>`
+      + `<div class="aviso">Consultor da Sankhya que não estiver na equipe do projeto é <b>cadastrado automaticamente</b> e avisado na tela e no log.</div>`,
       { botao: "Executar", perigo: todas && !rotuloConsultor });
     if (!ok) return;
     travar(true);

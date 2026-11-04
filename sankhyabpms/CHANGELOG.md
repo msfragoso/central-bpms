@@ -8,6 +8,16 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.4.0 — 04/11/2026
+- Início: cartões só com o nome e o ícone do módulo, e o cartão inteiro abre a tela. A
+  explicação e o último uso ficam dentro de cada tela; "ou pelo Claude" foi para a tela
+  da Agenda.
+- Ícones nos módulos, nos atalhos do Início e no menu do topo.
+- Sync: consultor fora do projeto é cadastrado automaticamente, o sync roda de novo só
+  para aquela FAP e o resultado aparece na tela e no log. O que não der certo fica na
+  tela com o motivo e "Tentar de novo".
+- Agenda semanal: "Agenda fixa" também não aparece como tarefa pai no e-mail.
+
 ## 1.3.1 — 03/11/2026
 - Agenda semanal: o e-mail mostra a tarefa pai numa etiqueta acima da subtarefa, em
   "Resumo da Demanda". Não aparece quando o pai é Atendimento Base, mês (ex.: 2026-10

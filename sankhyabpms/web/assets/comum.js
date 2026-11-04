@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.3.1";
+  const VERSAO = "1.4.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -17,6 +17,22 @@ const BPMS = (() => {
     { id: "backlog", href: "backlog.html", rotulo: "Backlog Base" },
     { id: "planilhas", href: "planilhas.html", rotulo: "Conferência Planilhas" },
   ];
+
+  // 04/11/2026 (Fragoso): ícone de cada módulo, usado no menu do topo e nos cartões do Início
+  const ICONES = {
+    lancar: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/>',
+    sync: '<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',
+    conferencia: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 13l2 2 4-4"/>',
+    fase3: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    aceite: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
+    agenda: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    atendimentos: '<path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2-5.2A8.5 8.5 0 1 1 21 11.5z"/>',
+    permissoes: '<path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+    backlog: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+    planilhas: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M10 4v16"/>',
+    inicio: '<path d="M3 11l9-8 9 8"/><path d="M5 9.5V21h14V9.5M10 21v-6h4v6"/>',
+  };
+  const icone = (id) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONES[id] || ""}</svg>`;
 
   // ------------------------------------------------------------ util
   const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -75,7 +91,7 @@ const BPMS = (() => {
     topo.innerHTML = `<div class="topo-dentro">
       <a class="marca" href="index.html"><span class="selo">BP</span><span class="marca-texto">Central BP-MS</span></a>
       <button class="botao-menu" id="botao-menu" aria-expanded="false" aria-controls="nav-principal">☰ <span id="menu-atual"></span></button>
-      <nav class="nav" id="nav-principal">${TELAS.map((t) => `<a href="${t.href}" class="${t.id === ativo ? "ativo" : ""}" data-texto="nav.${t.id}">${t.rotulo}</a>`).join("")}</nav>
+      <nav class="nav" id="nav-principal">${TELAS.map((t) => `<a href="${t.href}" class="${t.id === ativo ? "ativo" : ""}">${icone(t.id)}<span data-texto="nav.${t.id}">${t.rotulo}</span></a>`).join("")}</nav>
       <span class="pilula" id="pilula-servico">verificando…</span>
       <button class="botao-tema" id="botao-editar" title="Editar os textos desta tela">✎</button>
       <button class="botao-tema" id="botao-tema" title="Tema claro/escuro">◐</button>
@@ -478,5 +494,5 @@ const BPMS = (() => {
 
   return { $, $$, esc, normalizar, hojeBR, api, get, post, montarTopo, atualizarPilula, toast, modal, confirmar, informar,
            acompanhar, retomar, iniciar, mascaraData, dataValida, busca, ordenavel, comparar, arquivoBase64,
-           lerOrdem, ordenarPor, gravarOrdem };
+           icone, lerOrdem, ordenarPor, gravarOrdem };
 })();
