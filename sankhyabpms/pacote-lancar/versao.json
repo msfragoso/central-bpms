@@ -1,5 +1,5 @@
 {
- "versao": "1.7.2",
- "sha256": "b75ad38da20d03eb43cc94ed750cbd34f170a1270435dc8002d854fb48e230c6",
- "novidades": "## 1.7.2 — 04/11/2026\n- Instalador e desinstalador do Lançar ClickUp: encerram de verdade o serviço aberto, que antes\n  continuava rodando a versão antiga depois de instalar. A Central BP-MS no mesmo computador\n  não é encerrada."
+ "versao": "1.7.3",
+ "sha256": "2fde0c39024393005a6863a9c5cb03fdf87c9ea6d5c8b32f54aaeee4b223859c",
+ "novidades": "## 1.7.3 — 04/11/2026\n- Lançar ClickUp, X-Interno: além de Adm / Particular, dá para lançar nas listas Treinamentos e\n  Tickets Acompanhamento, direto na lista. A tela mostra só as listas que a conta alcança."
 }

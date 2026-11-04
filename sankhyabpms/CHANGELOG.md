@@ -8,6 +8,10 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.7.3 — 04/11/2026
+- Lançar ClickUp, X-Interno: além de Adm / Particular, dá para lançar nas listas Treinamentos e
+  Tickets Acompanhamento, direto na lista. A tela mostra só as listas que a conta alcança.
+
 ## 1.7.2 — 04/11/2026
 - Instalador e desinstalador do Lançar ClickUp: encerram de verdade o serviço aberto, que antes
   continuava rodando a versão antiga depois de instalar. A Central BP-MS no mesmo computador

@@ -155,18 +155,26 @@
   $("#hc-pai").addEventListener("change", preencherApelido);
   $("#hc-pai").addEventListener("input", preencherApelido);
 
-  // X-Interno (22/10/2026): vai sempre para a lista Adm / Particular, na subtarefa do mês.
+  // X-Interno (22/10/2026): Adm / Particular vai na subtarefa do mês.
+  // 04/11/2026: Treinamentos e Tickets Acompanhamento também entram, direto na lista.
   const INTERNO = "X-Interno";
-  let listaInterno = null;
+  let listasInterno = null;
+  function descreverInterno() {
+    const l = (listasInterno || []).find((x) => x.id === $("#fap").value);
+    if (l) $("#fap-info").textContent = `(X-Interno: lista ${l.nome}, ${l.mensal ? "na subtarefa do mês" : "direto na lista"})`;
+  }
+  $("#fap").addEventListener("change", () => { if (fapParceiro === INTERNO) descreverInterno(); });
   async function mostrarInterno(sim) {
     const info = $("#fap-info"), sel = $("#fap");
     if (!sim) return;
-    sel.innerHTML = "<option value=\"\">(Adm / Particular)</option>"; sel.disabled = true;
+    sel.innerHTML = "<option value=\"\">(buscando listas…)</option>"; sel.disabled = true;
     info.className = "ajuda ok";
     try {
-      if (!listaInterno) listaInterno = (await get("/api/lancar/interno")).lista;
-      sel.innerHTML = `<option value="">${esc(listaInterno)}</option>`;
-      info.textContent = `(X-Interno: lista ${listaInterno}, na subtarefa do mês)`;
+      if (!listasInterno) listasInterno = (await get("/api/lancar/interno")).listas;
+      if (fapParceiro !== INTERNO) return;
+      sel.innerHTML = listasInterno.map((l) => `<option value="${esc(l.id)}">${esc(l.nome)}</option>`).join("");
+      sel.disabled = listasInterno.length < 2;
+      descreverInterno();
     } catch (e) { info.className = "ajuda erro"; info.textContent = e.message; }
   }
 
@@ -309,8 +317,9 @@
       const prefixo = `${t.lista.trim()} (${apelido}) - `;
       if (!d.titulo.toLowerCase().startsWith(prefixo.toLowerCase())) d.titulo = prefixo + d.titulo;
     } else if (d.parceiro === INTERNO) {
-      if (!listaInterno) return toast("Aguarde carregar a lista do X-Interno.", "erro");
-      fap = { id: "", nome: `${listaInterno} (subtarefa do mês)` };
+      const li = (listasInterno || []).find((x) => x.id === $("#fap").value);
+      if (!li) return toast("Aguarde carregar as listas do X-Interno.", "erro");
+      fap = { id: li.id, nome: `${li.nome} (${li.mensal ? "subtarefa do mês" : "direto na lista"})` };
     } else {
       if (fapParceiro !== d.parceiro || !faps.length) return toast("Aguarde carregar as FAPs do parceiro (ou confira se ele tem FAP avulso ativa).", "erro");
       const fapId = $("#fap").value;

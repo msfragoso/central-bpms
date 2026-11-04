@@ -69,7 +69,8 @@ def periodo(req):
 
 PARCEIRO_HC = "X-Horas Cruzadas"
 PARCEIRO_INTERNO = "X-Interno"
-_cache_interno = {}
+# 04/11/2026 (Fragoso): além de Adm / Particular, o X-Interno lança nestas listas da pasta 1-BP-MS.
+LISTAS_INTERNO_1BPMS = {"treinamentos", "tickets acompanhamento"}
 
 
 def _pastas_ou_erro():
@@ -82,23 +83,28 @@ def _pastas_ou_erro():
         raise ErroUsuario(str(e))
 
 
-def _lista_interno():
-    """Id da lista 'Particular' da pasta 'Adm' (subpasta de 1-BP-MS) do PMO BP-MS."""
-    if "id" not in _cache_interno:
-        pastas, _ = _pastas_ou_erro()
-        adm = next((f for f in pastas if f["name"].strip().lower() == "adm"), None)
-        lista = next((l for l in (adm or {}).get("lists", []) if l["name"].strip().lower() == "particular"), None)
-        if not lista:
-            raise ErroUsuario("Não achei a lista 'Adm / Particular' no PMO BP-MS para o X-Interno. "
-                              "Sua conta do ClickUp pode não ter acesso a ela.")
-        _cache_interno["id"], _cache_interno["nome"] = str(lista["id"]), f"Adm / {lista['name']}"
-    return _cache_interno["id"]
+def _listas_interno():
+    """Listas do X-Interno que a conta alcança. Adm / Particular usa a subtarefa do mês; as outras, não."""
+    pastas, _ = _pastas_ou_erro()
+    saida = []
+    adm = next((f for f in pastas if f["name"].strip().lower() == "adm"), None)
+    particular = next((l for l in (adm or {}).get("lists", []) if l["name"].strip().lower() == "particular"), None)
+    if particular:
+        saida.append({"id": str(particular["id"]), "nome": f"Adm / {particular['name']}", "mensal": True})
+    pasta = next((f for f in pastas if f["name"].strip().lower() == "1-bp-ms"), None)
+    for l in sorted((pasta or {}).get("lists", []), key=lambda x: x["name"].lower()):
+        if l["name"].strip().lower() in LISTAS_INTERNO_1BPMS:
+            saida.append({"id": str(l["id"]), "nome": l["name"].strip(), "mensal": False})
+    if not saida:
+        raise ErroUsuario("Não achei as listas do X-Interno (Adm / Particular, Treinamentos, Tickets Acompanhamento). "
+                          "Sua conta do ClickUp pode não ter acesso a elas.")
+    return saida
 
 
 @rota("GET", "/api/lancar/interno")
 def interno(req):
-    _lista_interno()
-    return 200, {"lista": _cache_interno["nome"]}
+    listas = _listas_interno()
+    return 200, {"lista": listas[0]["nome"], "listas": listas}
 
 
 def _cu_get(caminho):
@@ -278,7 +284,14 @@ def lancar(req):
             apelidos[parent_id] = apelido
             gravar_json_dados(ARQ_APELIDOS_HC, apelidos)
     elif parceiro == PARCEIRO_INTERNO:
-        list_id = _lista_interno()   # Adm / Particular; o pai é o mês, resolvido abaixo
+        listas = _listas_interno()
+        escolhida = str(c.get("fap_id") or "").strip()
+        # Sem escolha (tela antiga aberta): Adm / Particular, como antes.
+        destino = next((l for l in listas if (l["id"] == escolhida if escolhida else l["mensal"])), None)
+        if not destino:
+            raise ErroUsuario("Selecione uma lista válida para o X-Interno.")
+        list_id = destino["id"]
+        interno_mensal = destino["mensal"]
     else:
         list_id = str(c.get("fap_id") or "").strip()
     if not list_id:
@@ -286,7 +299,7 @@ def lancar(req):
 
     responsavel_id = c.get("responsavel_id") or None
     data_venc = data_br(c["vencimento"], "Data de vencimento") if (c.get("vencimento") or "").strip() else None
-    if parceiro == PARCEIRO_INTERNO:
+    if parceiro == PARCEIRO_INTERNO and interno_mensal:
         # X-Interno (22/10/2026): subtarefa do mês ("2026-10 Outubro"), que é tarefa de 1º
         # nível da lista Particular (sem "1-Atendimento Base"). Cria o mês se não existir.
         nome_mes = m.gerar_nome_mes_atual(data_venc if (data_venc and m.MES_PELA_DATA_VENCIMENTO) else None)
@@ -306,6 +319,7 @@ def lancar(req):
         titulo=titulo, detalhamento=detalhamento, parceiro=parceiro, usuario_cliente=usuario,
         origem=origem, responsavel_id=responsavel_id, data_vencimento=data_venc, periodo=periodo,
         list_id=list_id, avisos=avisos, parent_task_id=parent_id,
+        sem_pai=parceiro == PARCEIRO_INTERNO and not interno_mensal,
     )
     if anexos:
         avisos.extend(_enviar_anexos(task_id, anexos))
