@@ -8,6 +8,10 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.7.4 — 04/11/2026
+- Lançar ClickUp: quando o ClickUp não libera os nomes da equipe para a conta, o Responsável já
+  vem preenchido com o nome da própria pessoa.
+
 ## 1.7.3 — 04/11/2026
 - Lançar ClickUp, X-Interno: além de Adm / Particular, dá para lançar nas listas Treinamentos e
   Tickets Acompanhamento, direto na lista. A tela mostra só as listas que a conta alcança.

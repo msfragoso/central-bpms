@@ -120,6 +120,11 @@
 
   mascaraData($("#vencimento"));
 
+  // 04/11/2026 (Fragoso): se a conta só enxerga o próprio nome, o Responsável já vem preenchido com ele.
+  function preencherResponsavel() {
+    const nomes = Object.keys(mapaMembros);
+    if (nomes.length === 1 && !$("#responsavel").value.trim()) $("#responsavel").value = nomes[0];
+  }
   function aplicarMembros(membros) {
     mapaMembros = {};
     membros.forEach((m) => { mapaMembros[m.nome] = m.id; });
@@ -243,7 +248,7 @@
     aoMudarParceiro();
     $("#parceiro").focus();
     // atualiza membros em segundo plano (como a tela Tk)
-    post("/api/lancar/membros").then((r) => { aplicarMembros(r.membros); $("#resp-info").textContent = ""; })
+    post("/api/lancar/membros").then((r) => { aplicarMembros(r.membros); preencherResponsavel(); $("#resp-info").textContent = ""; })
       .catch(() => { if (!Object.keys(mapaMembros).length) { $("#resp-info").className = "ajuda erro"; $("#resp-info").textContent = "(não carregou a lista)"; } });
   }
 
@@ -259,7 +264,7 @@
 
   function limpar() {
     ["#titulo", "#usuario", "#detalhamento", "#parceiro", "#vencimento", "#periodo", "#responsavel"].forEach((s) => $(s).value = "");
-    $("#origem").value = ""; limparAnexos(); resetarFap();
+    $("#origem").value = ""; limparAnexos(); resetarFap(); preencherResponsavel();
   }
   $("#btn-limpar").onclick = limpar;
   // Anexos (21/10/2026): vão se somando a cada escolha (ou arrastando), com ✕ para tirar um.
@@ -367,7 +372,7 @@
       res.classList.remove("oculto");
       toast("Tarefa lançada.", "ok");
       ["#titulo", "#usuario", "#detalhamento", "#parceiro", "#vencimento", "#periodo", "#responsavel"].forEach((s) => $(s).value = "");
-      $("#origem").value = ""; limparAnexos(); resetarFap(); BPMS.atualizarPilula();
+      $("#origem").value = ""; limparAnexos(); resetarFap(); preencherResponsavel(); BPMS.atualizarPilula();
     } catch (e) {
       BPMS.informar("Erro ao lançar", `Ocorreu um problema no ClickUp:<br><br>${esc(e.message)}`);
     } finally {

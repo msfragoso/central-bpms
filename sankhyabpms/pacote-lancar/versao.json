@@ -1,5 +1,5 @@
 {
- "versao": "1.7.3",
- "sha256": "2fde0c39024393005a6863a9c5cb03fdf87c9ea6d5c8b32f54aaeee4b223859c",
- "novidades": "## 1.7.3 — 04/11/2026\n- Lançar ClickUp, X-Interno: além de Adm / Particular, dá para lançar nas listas Treinamentos e\n  Tickets Acompanhamento, direto na lista. A tela mostra só as listas que a conta alcança."
+ "versao": "1.7.4",
+ "sha256": "fceeb44e7ec6c1f2a0fca310a37c9d91d3be9352db4c34dcd3dfb84349ddcf84",
+ "novidades": "## 1.7.4 — 04/11/2026\n- Lançar ClickUp: quando o ClickUp não libera os nomes da equipe para a conta, o Responsável já\n  vem preenchido com o nome da própria pessoa."
 }
