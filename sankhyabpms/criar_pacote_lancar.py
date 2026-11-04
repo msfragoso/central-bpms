@@ -7,6 +7,9 @@ credencial, cache pessoal ou dado desta máquina.
 Uso:  python criar_pacote_lancar.py
 Saída: dist\\Lancar_ClickUp_BP-MS.zip
 """
+import ast
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -222,7 +225,10 @@ Start-Sleep -Seconds 2
 
 LEIA_ME = '''LANÇAR TAREFA NO CLICKUP — BP-MS
 
-INSTALAR (ou atualizar para uma versão nova)
+ATUALIZAR
+Depois de instalado, ao abrir a tela aparece "Atualizar agora" quando houver versão nova.
+
+INSTALAR (primeira vez)
 1. Extraia este .zip (botão direito > Extrair tudo).
 2. Dê dois cliques em  Instalar_Lancar_ClickUp.bat
    O instalador faz tudo sozinho:
@@ -249,6 +255,87 @@ PROBLEMAS
 '''
 
 
+# 04/11/2026: o pacote fica no GitHub público para a atualização online, então o config.py
+# dele leva só o que o Lançar usa, sem nomes, e-mails e parceiros.
+CONFIG_DO_PACOTE = ("CLICKUP_API", "CLICKUP_HEADERS", "SPACE_ID_PMO_BP_MS", "PASTAS_IGNORADAS", "FIELD_EXPERIENCE",
+                    "EXPERIENCE_OPTIONS", "STATUS_NAO_EXECUTADO", "FIELD_ETAPA", "FIELD_USUARIO_CLIENTE",
+                    "FIELD_PARCEIRO", "FIELD_MODULO", "ETAPA_ATENDIMENTO_AVULSO", "MODULO_ATENDIMENTO_AVULSO")
+CONFIG_PESSOAIS = ("PARCEIRO_FAP", "CONSULTOR_DE_PARA", "CONSULTOR_DE_PARA_POR_FAP", "PESSOAS_NAO_CONSULTORAS_EMAILS")
+
+
+def _atribuicoes_do_config():
+    with open(os.path.join(MOTORES, "clickup_sync", "config.py"), encoding="utf-8") as f:
+        fonte = f.read()
+    achadas = {}
+    for no in ast.parse(fonte).body:
+        if isinstance(no, ast.Assign) and len(no.targets) == 1 and isinstance(no.targets[0], ast.Name):
+            achadas[no.targets[0].id] = (no, ast.get_source_segment(fonte, no))
+    return achadas
+
+
+def config_enxuto():
+    achadas = _atribuicoes_do_config()
+    linhas = ["# Configuração do pacote Lançar ClickUp: só IDs do ClickUp. O token fica no cofre do Windows.",
+              "from credenciais import CLICKUP_TOKEN", ""]
+    linhas += [achadas[nome][1] for nome in CONFIG_DO_PACOTE]
+    return "\n".join(linhas) + "\n"
+
+
+def textos_pessoais():
+    """Nomes e e-mails do config.py completo, para garantir que nenhum foi parar no pacote."""
+    achadas = _atribuicoes_do_config()
+    textos = set()
+    for nome in CONFIG_PESSOAIS:
+        if nome in achadas:
+            for no in ast.walk(achadas[nome][0].value):
+                if isinstance(no, ast.Constant) and isinstance(no.value, str) and len(no.value) >= 4:
+                    textos.add(no.value)
+    # "BPMS" é o responsável genérico e "Origem" é palavra comum: aparecem nos textos da tela.
+    return textos - {"BPMS", "Origem"}
+
+
+def conferir_sem_dados_pessoais():
+    proibidos = textos_pessoais()
+    achados = []
+    for raiz, _, arquivos in os.walk(PACOTE):
+        for a in arquivos:
+            if a.lower().endswith((".png", ".ico", ".zip")):
+                continue
+            cam = os.path.join(raiz, a)
+            with open(cam, encoding="utf-8", errors="ignore") as f:
+                texto = f.read()
+            if "@sankhya" in texto.lower():
+                achados.append((os.path.relpath(cam, PACOTE), "@sankhya"))
+            for p in proibidos:
+                if re.search(r"(?<!\w)" + re.escape(p) + r"(?!\w)", texto):
+                    achados.append((os.path.relpath(cam, PACOTE), p))
+    if achados:
+        raise SystemExit(f"Pacote recusado, tem dados pessoais: {achados[:10]}")
+
+
+def limpar_py(caminho, esvaziar=()):
+    """Regrava o .py sem comentários e docstrings, que citam clientes, e esvazia as listas pedidas."""
+    with open(caminho, encoding="utf-8") as f:
+        arvore = ast.parse(f.read())
+    for no in ast.walk(arvore):
+        if isinstance(no, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            corpo = no.body
+            if corpo and isinstance(corpo[0], ast.Expr) and isinstance(corpo[0].value, ast.Constant) \
+                    and isinstance(corpo[0].value.value, str):
+                del corpo[0]
+                if not corpo and not isinstance(no, ast.Module):
+                    corpo.append(ast.Pass())
+        if isinstance(no, ast.Assign) and len(no.targets) == 1 and isinstance(no.targets[0], ast.Name) \
+                and no.targets[0].id in esvaziar:
+            no.value = ast.Dict(keys=[], values=[])
+    escrever(caminho, ast.unparse(arvore) + "\n")
+
+
+def versao_do_pacote():
+    with open(os.path.join(AQUI, "web", "assets", "comum.js"), encoding="utf-8") as f:
+        return re.search(r'const VERSAO = "(\d+\.\d+\.\d+)"', f.read()).group(1)
+
+
 def copiar(origem, destino):
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     shutil.copy2(origem, destino)
@@ -267,11 +354,11 @@ def main():
     mot = os.path.join(PACOTE, "motores")
 
     # --- serviço: só o núcleo e a tela Lançar
-    for n in ("nucleo.py", "servidor.py", "rotas_tarefas.py", "rotas_textos.py", "app_lancar.py"):
+    for n in ("nucleo.py", "servidor.py", "rotas_tarefas.py", "rotas_textos.py", "rotas_atualizacao.py", "atualizador.py", "app_lancar.py"):
         copiar(os.path.join(AQUI, "servico", n), os.path.join(c, "servico", n))
     escrever(os.path.join(c, "config.json"),
              '{\n  "pasta_motores": "..\\\\motores",\n  "porta": 8766,\n  "abrir_navegador": true,\n'
-             '  "modulos": ["lancar"]\n}\n')
+             '  "modulos": ["lancar"],\n  "atualizacao": "lancar"\n}\n')
 
     # --- telas: lancar.html + assets; menu só com a tela Lançar
     web = os.path.join(AQUI, "web")
@@ -295,8 +382,9 @@ def main():
     escrever(os.path.join(c, "web", "manifest.json"), man)
 
     # --- motores: só o necessário para lançar tarefa no ClickUp
-    for n in ("__init__.py", "config.py", "list_discovery.py", "clickup_client.py", "text_matching.py"):
+    for n in ("__init__.py", "list_discovery.py", "clickup_client.py", "text_matching.py"):
         copiar(os.path.join(MOTORES, "clickup_sync", n), os.path.join(mot, "clickup_sync", n))
+    escrever(os.path.join(mot, "clickup_sync", "config.py"), config_enxuto())
     copiar(os.path.join(MOTORES, "clickup_tasks", "lancar_tarefas_clickup.py"),
            os.path.join(mot, "clickup_tasks", "lancar_tarefas_clickup.py"))
     escrever(os.path.join(mot, "credenciais.py"), '''"""
@@ -364,6 +452,13 @@ raiz.mainloop()
     escrever(os.path.join(PACOTE, "desinstalar.ps1"), DESINSTALAR_PS1, bom=True)
     escrever(os.path.join(PACOTE, "LEIA-ME.txt"), LEIA_ME, bom=True)
 
+    # 04/11/2026: a lista de parceiros vem do ClickUp, com o token de quem usa (atualizar_opcoes_parceiro).
+    for pasta in (os.path.join(c, "servico"), mot):
+        for raiz, _, arquivos in os.walk(pasta):
+            for a in arquivos:
+                if a.endswith(".py"):
+                    limpar_py(os.path.join(raiz, a), esvaziar=("OPCOES_PARCEIRO",))
+    conferir_sem_dados_pessoais()
     os.makedirs(DIST, exist_ok=True)
     zip_path = os.path.join(DIST, "Lancar_ClickUp_BP-MS.zip")
     if os.path.exists(zip_path):
@@ -375,7 +470,12 @@ raiz.mainloop()
                 z.write(cam, os.path.relpath(cam, DIST))
     # 23/10/2026: o passo a passo também fica ao lado do .zip, para mandar junto
     shutil.copy2(os.path.join(PACOTE, "LEIA-ME.txt"), os.path.join(DIST, "Como instalar - Lancar ClickUp BP-MS.txt"))
-    print("Pacote:", zip_path)
+    # 04/11/2026: versao.json vai junto com o .zip para pacote-lancar/ no GitHub (atualização online).
+    with open(zip_path, "rb") as f:
+        sha = hashlib.sha256(f.read()).hexdigest()
+    with open(os.path.join(DIST, "versao.json"), "w", encoding="utf-8") as f:
+        json.dump({"versao": versao_do_pacote(), "sha256": sha}, f, ensure_ascii=False, indent=1)
+    print("Pacote:", zip_path, versao_do_pacote(), sha)
 
 
 if __name__ == "__main__":

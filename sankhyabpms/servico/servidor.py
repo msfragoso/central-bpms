@@ -28,6 +28,7 @@ nucleo.instalar_roteador()
 import importlib  # noqa: E402
 import rotas_tarefas  # noqa: E402,F401  (registram as rotas ao importar)
 import rotas_textos  # noqa: E402,F401
+import rotas_atualizacao  # noqa: E402,F401
 
 # Módulos (telas) carregados. config.json pode limitar com "modulos": ["lancar"]
 # -- usado no pacote "só Lançar ClickUp" para outro computador (20/10/2026).

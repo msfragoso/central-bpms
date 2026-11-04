@@ -8,6 +8,14 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.6.0 — 04/11/2026
+- Atualização online, na Central e no pacote Lançar ClickUp: ao abrir a tela, aparece
+  "Atualizar agora" quando há versão nova no GitHub. Com a confirmação, baixa e confere o
+  pacote, guarda cópia da versão atual e reinicia. Se a nova não abrir, volta sozinha.
+- Pacote Lançar ClickUp: publicado em `pacote-lancar/`, sem nomes, e-mails ou parceiros. A
+  lista de parceiros agora vem do ClickUp, com o token de quem usa.
+- Quem está em versão anterior precisa instalar a 1.6.0 à mão uma última vez.
+
 ## 1.5.0 — 04/11/2026
 - Conferência de OS: com o login feito e a Consulta de OS pronta, a janela do Sankhya-OM
   some da tela e da barra de tarefas, e a consulta continua aberta. Ela volta sozinha

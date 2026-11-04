@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.5.0";
+  const VERSAO = "1.6.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -76,6 +76,49 @@ const BPMS = (() => {
   const get = (c) => api("GET", c);
   const post = (c, corpo = {}) => api("POST", c, corpo);
 
+  // ------------------------------------------------------------ atualização online
+  // 04/11/2026 (Fragoso): ao abrir a tela, avisa se há versão nova no GitHub. Só atualiza com confirmação.
+  async function verificarAtualizacao(topo) {
+    let info;
+    try { info = await get("/api/atualizacao/status"); } catch (e) { return; }
+    if (!info.disponivel && !info.em_andamento) return;
+    const barra = document.createElement("div");
+    barra.className = "barra-atualizacao";
+    barra.setAttribute("role", "status");
+    topo.append(barra);   // dentro do cabeçalho fixo: fica visível mesmo com a tela rolada
+    if (info.em_andamento) return aguardarAtualizacao(barra, info.versao_nova);
+    barra.innerHTML = `<span>Nova versão disponível: <b>v${esc(info.versao_nova)}</b> (você está na v${esc(info.versao_local)}).</span>
+      <button class="btn pequeno" type="button">Atualizar agora</button>`;
+    $("button", barra).onclick = async () => {
+      const ok = await confirmar(`Atualizar para a versão ${info.versao_nova}?`,
+        `<p>O serviço vai reiniciar e as sessões abertas por ele serão fechadas. Talvez seja preciso fazer login de novo.</p><p>Suas configurações e dados não são alterados, e a versão atual fica guardada. Se a nova não abrir, ele volta sozinho para a atual.</p>${info.novidades ? `<p><b>Novidades</b></p><pre style="white-space:pre-wrap;max-height:220px;overflow:auto;font:inherit;margin:0">${esc(info.novidades)}</pre>` : ""}`,
+        { botao: "Atualizar agora" });
+      if (!ok) return;
+      $("button", barra).disabled = true;
+      try {
+        await post("/api/atualizacao/aplicar", { confirmar: true });
+        aguardarAtualizacao(barra, info.versao_nova);
+      } catch (e) {
+        $("button", barra).disabled = false;
+        toast(e.message, "erro");
+      }
+    };
+  }
+
+  function aguardarAtualizacao(barra, versao) {
+    barra.textContent = `Atualizando para a v${versao}. A página recarrega sozinha quando terminar…`;
+    const limite = Date.now() + 120000;
+    const conferir = async () => {
+      try {
+        const s = await get("/api/atualizacao/status");
+        if (s.versao_local === versao && !s.em_andamento) return location.reload();
+      } catch (e) { /* serviço reiniciando */ }
+      if (Date.now() < limite) return void setTimeout(conferir, 2000);
+      barra.textContent = `A atualização para a v${versao} não terminou. Recarregue a página e confira a versão no rodapé.`;
+    };
+    setTimeout(conferir, 3000);
+  }
+
   // ------------------------------------------------------------ cabeçalho
   function montarTopo(ativo) {
     // Assinatura no rodapé de todas as telas (pedido do Fragoso, 21/10/2026).
@@ -97,6 +140,7 @@ const BPMS = (() => {
       <button class="botao-tema" id="botao-tema" title="Tema claro/escuro">◐</button>
     </div>`;
     document.body.prepend(topo);
+    verificarAtualizacao(topo);
     $("#botao-editar").onclick = () => (document.body.classList.contains("editando") ? null : editarTextos());
     aplicarTextos().then(aplicarOrdemMenu).then(ajustarMenu);
     prepararMenu(topo);

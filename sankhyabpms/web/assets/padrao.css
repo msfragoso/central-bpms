@@ -233,3 +233,7 @@ nav.links-sankhya a:hover, nav.links-sankhya a:focus-visible { border-color: var
 .organizando section.processo { cursor: grab; outline: 1.5px dashed var(--claude); outline-offset: 2px; }
 .organizando section.processo a, .organizando section.processo button { pointer-events: none; }
 section.processo.arrastando { opacity: .45; }
+
+/* ---------- atualização online ---------- */
+.barra-atualizacao { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px;
+  padding: 8px 16px; background: var(--aviso-claro); color: var(--aviso); font-size: 14px; }

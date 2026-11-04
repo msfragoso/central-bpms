@@ -14,6 +14,7 @@ ARQ_MEMORIA = "ultimo_lancamento.json"
 
 def _motor():
     import lancar_tarefas_clickup as m  # importa credenciais (cofre do Windows) na 1ª vez
+    m.atualizar_opcoes_parceiro()  # 04/11/2026: o pacote público não leva a lista de parceiros
     return m
 
 
