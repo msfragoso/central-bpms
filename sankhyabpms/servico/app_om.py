@@ -149,6 +149,12 @@ def conectar(req):
     return 200, OM.status()
 
 
+@rota("POST", "/api/om/ocultar")
+def ocultar(req):
+    OM.ocultar()
+    return 200, OM.status()
+
+
 @rota("GET", "/api/om/status")
 def status(req):
     return 200, OM.status()

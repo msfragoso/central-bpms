@@ -8,6 +8,13 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.5.0 — 04/11/2026
+- Conferência de OS: com o login feito e a Consulta de OS pronta, a janela do Sankhya-OM
+  some da tela e da barra de tarefas, e a consulta continua aberta. Ela volta sozinha
+  quando precisar de login ou da sua ação.
+- Botão "Mostrar janela" / "Ocultar janela do Sankhya-OM" na Conferência.
+- A Central responde "Não" sozinha ao aviso "Restaurar telas" do OM, só na janela dela.
+
 ## 1.4.0 — 04/11/2026
 - Início: cartões só com o nome e o ícone do módulo, e o cartão inteiro abre a tela. A
   explicação e o último uso ficam dentro de cada tela; "ou pelo Claude" foi para a tela

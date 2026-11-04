@@ -253,6 +253,7 @@
     $("#tag-linha").classList.toggle("oculto", origemSk() !== "om");
   }
   document.querySelectorAll('input[name="origem-sk"]').forEach((r) => r.addEventListener("change", mostrarOrigemSk));
+  let omBotao = "conectar";
   async function statusOm() {
     try {
       const s = await get("/api/om/status");
@@ -260,12 +261,17 @@
       const txt = { sem_tela: "logado — abrindo a tela Consulta de OS no OM…", conectado: `conectado${s.desde ? " desde " + s.desde : ""} · Consulta de OS aberta`, aguardando_login: "aguardando seu login na janela do Sankhya-OM…", desconectado: s.mensagem || "não conectado" }[omEstado] || s.mensagem;
       $("#om-status").textContent = txt;
       $("#om-status").className = "ajuda " + (omEstado === "conectado" ? "ok" : omEstado === "erro" || omEstado === "desconectado" ? "erro" : "aviso");
-      $("#btn-om").textContent = s.estado === "conectado" ? "Abrir janela do Sankhya-OM" : "Conectar ao Sankhya-OM";
+      omBotao = s.estado !== "conectado" ? "conectar" : s.janela_oculta ? "mostrar" : "ocultar";
+      $("#btn-om").textContent = { conectar: "Conectar ao Sankhya-OM", mostrar: "Mostrar janela do Sankhya-OM", ocultar: "Ocultar janela do Sankhya-OM" }[omBotao];
     } catch (e) { /* serviço fora do ar: a pílula do topo já avisa */ }
   }
   $("#btn-om").onclick = async () => {
     $("#btn-om").disabled = true;
-    try { await post("/api/om/conectar"); toast("Faça o login na janela do Sankhya-OM que abriu (se ainda não estiver logado)."); }
+    try {
+      if (omBotao === "ocultar") { await post("/api/om/ocultar"); toast("Janela do Sankhya-OM oculta. A Consulta de OS continua aberta."); }
+      else if (omBotao === "mostrar") { await post("/api/om/conectar"); toast("A janela do Sankhya-OM voltou para a tela."); }
+      else { await post("/api/om/conectar"); toast("Faça o login na janela do Sankhya-OM que abriu (se ainda não estiver logado)."); }
+    }
     catch (e) { toast(e.message, "erro"); }
     finally { $("#btn-om").disabled = false; statusOm(); }
   };

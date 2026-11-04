@@ -16,6 +16,7 @@ tudo roda numa thread dedicada que recebe trabalhos por uma fila.
 import json
 import os
 import queue
+import subprocess
 import threading
 import time
 from urllib.parse import parse_qs, urlparse
@@ -26,6 +27,49 @@ URL_OM = "https://skw.sankhya.com.br/mge/"
 SERVICO = "https://skw.sankhya.com.br/mge/service.sbr"
 PERFIL = dados_arquivo("om_perfil")
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+
+def _user32():
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    u.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    u.IsWindowVisible.argtypes = [wintypes.HWND]
+    u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    u.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    return u
+
+
+def _janelas_visiveis(pid):
+    """Janelas de navegador visíveis do processo do Chrome informado."""
+    import ctypes
+    from ctypes import wintypes
+    u = _user32()
+    achadas = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def ver(hwnd, _):
+        dono = wintypes.DWORD()
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(dono))
+        if dono.value == pid and u.IsWindowVisible(hwnd):
+            classe = ctypes.create_unicode_buffer(64)
+            u.GetClassNameW(hwnd, classe, 64)
+            if classe.value == "Chrome_WidgetWin_1":
+                achadas.append(hwnd)
+        return True
+
+    u.EnumWindows(ver, 0)
+    return achadas
+
+
+def _pid_chrome_do_perfil(perfil):
+    filtro = os.path.basename(perfil).replace("'", "")
+    cmd = ("Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object { "
+           f"$_.CommandLine -like '*{filtro}*' -and $_.CommandLine -notlike '*--type=*' }} | "
+           "Select-Object -First 1 -ExpandProperty ProcessId")
+    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True,
+                       text=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
+    return int(r.stdout.strip())
 
 
 class _Om:
@@ -39,6 +83,9 @@ class _Om:
         self.mensagem = ""
         self.sktk_consulta = None       # (mgeSession, sktk) vistos na tela Consulta de OS
         self._pagina_consulta = None
+        self.janela_oculta = False
+        self._pid_chrome = None
+        self._janelas_ocultas = []
 
     # ---------------------------------------------------------------- thread
     def _garantir_thread(self):
@@ -76,20 +123,24 @@ class _Om:
             if not self.sessao and time.time() - getattr(self, "_ultima_busca", 0) > 3:
                 self._ultima_busca = time.time()
                 self._sessao_pelas_telas()
+            self._responder_aviso_restaurar()
             # Logado e sem a Consulta de OS aberta: abre a tela uma vez por sessão.
             if self.sessao and not self._consulta_pronta() and                     getattr(self, "_abriu_consulta_em", None) != self.sessao["mgeSession"] and                     time.time() - self.sessao.get("quando", 0) > 5:
                 self._abrir_tela_consulta()
             # 29/10/2026 (Fragoso): com o login feito e a Consulta de OS pronta, a janela do OM
-            # sai da frente (minimizada); só volta quando precisar de login de novo.
+            # sai da frente; só volta quando precisar de login de novo.
+            # 04/11/2026 (Fragoso): além de minimizar, some também da barra de tarefas.
             if self._consulta_pronta() and getattr(self, "_minimizada_em", None) != self.sessao["mgeSession"]:
                 self._minimizada_em = self.sessao["mgeSession"]
-                self._janela("minimized")
+                self._ocultar_janela()
         except Exception:
             pass
 
     def _janela(self, estado):
         """Minimiza ("minimized") ou traz de volta ("normal") a janela do OM. Thread do Playwright."""
         try:
+            if estado == "normal":
+                self._mostrar_janelas_ocultas()
             pagina = self._ctx.pages[0]
             cdp = self._ctx.new_cdp_session(pagina)
             wid = cdp.send("Browser.getWindowForTarget")["windowId"]
@@ -99,6 +150,77 @@ class _Om:
                 pagina.bring_to_front()
         except Exception:
             pass
+
+    def _ocultar_janela(self):
+        """Minimiza e tira a janela da tela e da barra de tarefas; o Chrome e a tela seguem abertos.
+        Se não conseguir ocultar, a janela só fica minimizada. Thread do Playwright."""
+        self._janela("minimized")
+        try:
+            hwnds = _janelas_visiveis(self._pid_do_chrome())
+            for hwnd in hwnds:
+                _user32().ShowWindow(hwnd, 0)   # SW_HIDE
+            self._janelas_ocultas = hwnds
+            self.janela_oculta = bool(hwnds)
+            print(f"[OM] janela oculta automaticamente ou pelo botão: {len(hwnds)} janela(s)", flush=True)
+        except Exception as e:
+            print(f"[OM] não consegui ocultar a janela, ela fica só minimizada: {e}", flush=True)
+
+    def _mostrar_janelas_ocultas(self):
+        for hwnd in self._janelas_ocultas:
+            _user32().ShowWindow(hwnd, 5)   # SW_SHOW
+        self._janelas_ocultas = []
+        self.janela_oculta = False
+
+    def _pid_do_chrome(self):
+        """PID do processo principal do Chrome que usa o perfil do OM."""
+        if not self._pid_chrome:
+            self._pid_chrome = _pid_chrome_do_perfil(PERFIL)
+        return self._pid_chrome
+
+    # 04/11/2026 (Fragoso): o Reiniciar_Servico encerra o Chrome à força e o OM pergunta se quer
+    # "Restaurar telas". A Central abre a Consulta de OS sozinha, então responde "Não" a esse aviso.
+    _JS_AVISO_RESTAURAR = r"""() => {
+        const todos = (raiz, saida = []) => {
+            if (raiz.shadowRoot) todos(raiz.shadowRoot, saida);
+            for (const el of raiz.querySelectorAll('*')) {
+                saida.push(el);
+                if (el.shadowRoot) todos(el.shadowRoot, saida);
+            }
+            return saida;
+        };
+        const texto = (el) => (el.innerText ?? el.textContent ?? '').trim();
+        const pai = (el) => el.parentElement || (el.getRootNode() && el.getRootNode().host) || null;
+        const elementos = todos(document).filter((el) => !['SCRIPT', 'STYLE', 'TEMPLATE'].includes(el.tagName));
+        const aviso = elementos.filter((el) => /sua última saída do sistema aconteceu inesperadamente/i.test(el.textContent || ''));
+        const mensagem = aviso[aviso.length - 1];
+        if (!mensagem) return false;
+        const botoes = elementos.filter((el) => texto(el) === 'Não' && !Array.from(el.children).some((f) => texto(f) === 'Não'));
+        // Sobe só até a caixa do aviso: nunca clica em um "Não" de fora dela (filtros da tela, por exemplo).
+        for (let caixa = mensagem; caixa && caixa !== document.body && caixa !== document.documentElement; caixa = pai(caixa)) {
+            const dentro = todos(caixa);
+            const botao = botoes.find((b) => dentro.includes(b));
+            if (botao) { botao.click(); return true; }
+        }
+        return false;
+    }"""
+
+    def _responder_aviso_restaurar(self):
+        """Procura o aviso nos primeiros 2 minutos de cada sessão e responde uma vez. Thread do Playwright."""
+        if not self.sessao or getattr(self, "_aviso_respondido_em", None) == self.sessao["mgeSession"]:
+            return
+        agora = time.time()
+        if agora - self.sessao.get("quando", 0) > 120 or agora - getattr(self, "_ultimo_aviso", 0) < 2:
+            return
+        self._ultimo_aviso = agora
+        for pagina in self._ctx.pages:
+            for frame in pagina.frames:
+                try:
+                    if frame.evaluate(self._JS_AVISO_RESTAURAR):
+                        self._aviso_respondido_em = self.sessao["mgeSession"]
+                        print("[OM] aviso 'Restaurar telas' respondido com Não.", flush=True)
+                        return
+                except Exception:
+                    pass
 
     def _consulta_pronta(self):
         return bool(self.sessao and self.sktk_consulta and self.sktk_consulta[0] == self.sessao["mgeSession"])
@@ -186,6 +308,7 @@ class _Om:
             opcoes["executable_path"] = CHROME
         else:
             opcoes["channel"] = "chrome"
+        self._pid_chrome = None
         self._ctx = self._pw.chromium.launch_persistent_context(PERFIL, **opcoes)
         self._ctx.on("request", self._ver_requisicao)
         self._ctx.on("close", lambda *_: self._fechou())
@@ -195,6 +318,9 @@ class _Om:
         self.sessao = None
         self.estado = "desconectado"
         self.mensagem = "A janela do Sankhya-OM foi fechada."
+        self.janela_oculta = False
+        self._janelas_ocultas = []
+        self._pid_chrome = None
 
     def _ver_requisicao(self, req):
         """Guarda mgeSession/sktk das chamadas que o próprio OM faz depois do login."""
@@ -226,8 +352,18 @@ class _Om:
                 self._janela("normal")   # precisa do login: a janela volta para a frente
                 self.estado = "aguardando_login"
                 self.mensagem = "Faça o login na janela do Sankhya-OM que abriu."
+            else:
+                self._janela("normal")   # já logado: o botão mostra a janela oculta
             return True
         return self._executar(abrir)
+
+    def ocultar(self):
+        """Oculta de novo a janela que o usuário pediu para ver."""
+        def fazer():
+            if self._ctx is not None:
+                self._ocultar_janela()
+            return True
+        return self._executar(fazer)
 
     # ---------------------------------------------------------------- tela Consulta de OS
     URL_CONSULTA = ("https://skw.sankhya.com.br/mgeos/ConsultaOS.xhtml5?mgeSession={s}"
@@ -291,6 +427,8 @@ class _Om:
                 msg = j.get("statusMessage") or j.get("statusMessageID") or str(j)[:300]
                 if "licen" in str(msg).lower():
                     self.sktk_consulta = None
+                    self._janela("normal")   # a mensagem pede para usar a janela: ela não pode estar oculta
+                    self._minimizada_em = None
                     raise RuntimeError("A licença da tela Consulta de OS expirou no Sankhya-OM. Abra a tela "
                                        "'Consulta de OS' de novo pelo menu do OM, na janela da Central, e tente outra vez.")
                 if "sess" in str(msg).lower() or str(j.get("status")) == "3":
@@ -304,6 +442,7 @@ class _Om:
     def status(self):
         pronta = bool(self.sessao and self.sktk_consulta and self.sktk_consulta[0] == self.sessao["mgeSession"])
         return {"estado": self.estado, "mensagem": self.mensagem, "consulta_pronta": pronta,
+                "janela_oculta": self.janela_oculta,
                 "desde": time.strftime("%d/%m %H:%M", time.localtime(self.sessao["quando"])) if self.sessao else None}
 
 
