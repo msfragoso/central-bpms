@@ -72,15 +72,25 @@ PARCEIRO_INTERNO = "X-Interno"
 _cache_interno = {}
 
 
+def _pastas_ou_erro():
+    """Pastas que a conta alcança; a conta com acesso só a algumas pastas e listas também entra."""
+    try:
+        return _motor().pastas_do_espaco()
+    except ErroUsuario:
+        raise
+    except Exception as e:
+        raise ErroUsuario(str(e))
+
+
 def _lista_interno():
     """Id da lista 'Particular' da pasta 'Adm' (subpasta de 1-BP-MS) do PMO BP-MS."""
     if "id" not in _cache_interno:
-        from clickup_sync.config import SPACE_ID_PMO_BP_MS
-        pastas = _cu_get(f"/space/{SPACE_ID_PMO_BP_MS}/folder?archived=false").get("folders", [])
+        pastas, _ = _pastas_ou_erro()
         adm = next((f for f in pastas if f["name"].strip().lower() == "adm"), None)
         lista = next((l for l in (adm or {}).get("lists", []) if l["name"].strip().lower() == "particular"), None)
         if not lista:
-            raise ErroUsuario("Não achei a lista 'Adm / Particular' no PMO BP-MS para o X-Interno.")
+            raise ErroUsuario("Não achei a lista 'Adm / Particular' no PMO BP-MS para o X-Interno. "
+                              "Sua conta do ClickUp pode não ter acesso a ela.")
         _cache_interno["id"], _cache_interno["nome"] = str(lista["id"]), f"Adm / {lista['name']}"
     return _cache_interno["id"]
 
@@ -96,15 +106,14 @@ def _cu_get(caminho):
     from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
     r = requests.get(f"{CLICKUP_API}{caminho}", headers=CLICKUP_HEADERS, timeout=60)
     if r.status_code != 200:
-        raise ErroUsuario(f"ClickUp respondeu HTTP {r.status_code} ao listar ({caminho.split('?')[0]}).")
+        raise ErroUsuario(f"ClickUp respondeu {_motor().motivo_clickup(r)} ao listar ({caminho.split('?')[0]}).")
     return r.json()
 
 
 @rota("GET", "/api/lancar/hc/pastas")
 def hc_pastas(req):
     """X-Horas Cruzadas: pastas (e subpastas) do PMO BP-MS com as listas abertas (sem 'Z' na frente)."""
-    from clickup_sync.config import SPACE_ID_PMO_BP_MS
-    pastas = _cu_get(f"/space/{SPACE_ID_PMO_BP_MS}/folder?archived=false").get("folders", [])
+    pastas, _ = _pastas_ou_erro()
     saida = [{"id": str(f["id"]), "nome": f["name"],
               "listas": [{"id": str(l["id"]), "nome": l["name"]} for l in f.get("lists", [])
                          if not l["name"].strip().upper().startswith("Z")]}
@@ -140,7 +149,7 @@ def hc_pais(req):
     _, d = hc_pastas(req)
     pasta = next((p for p in d["pastas"] if p["id"] == d["padrao"]), None)
     if not pasta:
-        raise ErroUsuario("Não achei a pasta 'Horas Cruzadas' no PMO BP-MS.")
+        raise ErroUsuario("Não achei a pasta 'Horas Cruzadas' no PMO BP-MS. Sua conta do ClickUp pode não ter acesso a ela.")
     pais = []
     for l in pasta["listas"]:
         class _Q:  # reaproveita hc_tarefas

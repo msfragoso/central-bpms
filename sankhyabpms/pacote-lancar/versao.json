@@ -1,5 +1,5 @@
 {
- "versao": "1.7.0",
- "sha256": "85cac97a545ee7e00e736f4bc3e386ea1cc8e3616353cc5b2633218f051956cb",
- "novidades": "## 1.7.0 — 04/11/2026\n- Lançar ClickUp: a atualização online agora é automática. Ao abrir a tela com versão nova,\n  ele atualiza e recarrega sozinho. Se a versão não abrir, volta para a anterior e só tenta\n  essa versão de novo com o clique em \"Atualizar agora\". Na Central segue com o botão."
+ "versao": "1.7.1",
+ "sha256": "6670ee93e71410e8f54a054cb3669fa04d2a4981a0d62c67f81751f19c2444f6",
+ "novidades": "## 1.7.1 — 04/11/2026\n- Lançar ClickUp: funciona para quem acessa só algumas pastas e listas do PMO BP-MS. Parceiros,\n  FAPs, X-Interno e X-Horas Cruzadas passam a usar o que a conta enxerga, e uma lista sem\n  nenhuma tarefa não aparece nesse caso. O erro agora mostra o motivo informado pelo ClickUp."
 }

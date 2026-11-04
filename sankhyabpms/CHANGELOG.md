@@ -8,6 +8,11 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.7.1 — 04/11/2026
+- Lançar ClickUp: funciona para quem acessa só algumas pastas e listas do PMO BP-MS. Parceiros,
+  FAPs, X-Interno e X-Horas Cruzadas passam a usar o que a conta enxerga, e uma lista sem
+  nenhuma tarefa não aparece nesse caso. O erro agora mostra o motivo informado pelo ClickUp.
+
 ## 1.7.0 — 04/11/2026
 - Lançar ClickUp: a atualização online agora é automática. Ao abrir a tela com versão nova,
   ele atualiza e recarrega sozinho. Se a versão não abrir, volta para a anterior e só tenta
