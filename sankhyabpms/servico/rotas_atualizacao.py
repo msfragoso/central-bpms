@@ -2,9 +2,10 @@
 """
 Atualização online (04/11/2026, pedido do Fragoso), da Central e do pacote Lançar ClickUp.
 
-Ao abrir uma tela, a página pergunta se há versão nova no GitHub. Se houver, aparece
-"Atualizar agora": só com a confirmação da pessoa o serviço baixa a versão, confere o
-pacote, guarda cópia do que vai trocar em dados/atualizacoes e reinicia.
+Ao abrir uma tela, a página pergunta se há versão nova no GitHub. O serviço baixa a versão,
+confere o pacote, guarda cópia do que vai trocar em dados/atualizacoes e reinicia.
+Na Central isso espera o clique em "Atualizar agora". No Lançar é automático (pedido do
+Fragoso), exceto em versão que já falhou neste computador, que volta a pedir o clique.
 
 - Central: baixa a etiqueta vX.Y.Z do repositório. Não troca config.json, dados/ e dist/.
   Os motores de C:\\sankhya_integracao ficam fora do repositório e não são atualizados.
@@ -237,11 +238,22 @@ def _reiniciar(raiz_dos_arquivos, backup, ajudante):
     os._exit(0)
 
 
+def versoes_que_falharam():
+    """Versões que não abriram e foram desfeitas: não tentam de novo sozinhas, para não repetir a queda."""
+    arq = os.path.join(pasta_atualizacoes(), HISTORICO)
+    if not os.path.isfile(arq):
+        return set()
+    with open(arq, encoding="utf-8") as f:
+        eventos = [json.loads(l) for l in f if l.strip()]
+    return {e.get("para") for e in eventos if "restaurada" in (e.get("evento") or "")}
+
+
 @rota("GET", "/api/atualizacao/status")
 def status(req):
     info = consultar()
     info.pop("sha256", None)
-    return 200, {**info, "em_andamento": _em_andamento.is_set()}
+    auto = modo() == "lancar" and info["disponivel"] and info["versao_nova"] not in versoes_que_falharam()
+    return 200, {**info, "auto": auto, "em_andamento": _em_andamento.is_set()}
 
 
 @rota("GET", "/api/atualizacao/historico")

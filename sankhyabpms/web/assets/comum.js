@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.6.1";
+  const VERSAO = "1.7.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -87,7 +87,21 @@ const BPMS = (() => {
     barra.setAttribute("role", "status");
     topo.append(barra);   // dentro do cabeçalho fixo: fica visível mesmo com a tela rolada
     if (info.em_andamento) return aguardarAtualizacao(barra, info.versao_nova);
-    barra.innerHTML = `<span>Nova versão disponível: <b>v${esc(info.versao_nova)}</b> (você está na v${esc(info.versao_local)}).</span>
+    // 04/11/2026 (Fragoso): no Lançar a atualização é automática. A tela fica travada até recarregar,
+    // para ninguém perder o que digitar. Se não der certo, cai no botão e o Lançar segue funcionando.
+    let falhaAuto = "";
+    if (info.auto) {
+      document.body.inert = true;
+      barra.textContent = `Atualizando para a v${info.versao_nova}. A tela recarrega sozinha…`;
+      try {
+        await post("/api/atualizacao/aplicar", { confirmar: true });
+        return aguardarAtualizacao(barra, info.versao_nova);
+      } catch (e) {
+        document.body.inert = false;
+        falhaAuto = e.message;
+      }
+    }
+    barra.innerHTML = `<span>Nova versão disponível: <b>v${esc(info.versao_nova)}</b> (você está na v${esc(info.versao_local)}).${falhaAuto ? ` Não atualizou sozinha: ${esc(falhaAuto)}` : ""}</span>
       <button class="btn pequeno" type="button">Atualizar agora</button>`;
     $("button", barra).onclick = async () => {
       const ok = await confirmar(`Atualizar para a versão ${info.versao_nova}?`,
@@ -108,11 +122,13 @@ const BPMS = (() => {
   function aguardarAtualizacao(barra, versao) {
     barra.textContent = `Atualizando para a v${versao}. A página recarrega sozinha quando terminar…`;
     const limite = Date.now() + 120000;
+    let caiu = false;
     const conferir = async () => {
       try {
         const s = await get("/api/atualizacao/status");
-        if (s.versao_local === versao && !s.em_andamento) return location.reload();
-      } catch (e) { /* serviço reiniciando */ }
+        // Voltou na versão antiga depois de cair: a nova não abriu e foi desfeita.
+        if (!s.em_andamento && (s.versao_local === versao || caiu)) return location.reload();
+      } catch (e) { caiu = true; /* serviço reiniciando */ }
       if (Date.now() < limite) return void setTimeout(conferir, 2000);
       barra.textContent = `A atualização para a v${versao} não terminou. Recarregue a página e confira a versão no rodapé.`;
     };
