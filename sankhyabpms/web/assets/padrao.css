@@ -237,3 +237,7 @@ section.processo.arrastando { opacity: .45; }
 /* ---------- atualização online ---------- */
 .barra-atualizacao { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px;
   padding: 8px 16px; background: var(--aviso-claro); color: var(--aviso); font-size: 14px; }
+
+/* ---------- aviso de senha expirada ---------- */
+.barra-credencial { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px;
+  padding: 8px 16px; background: var(--perigo-claro); color: var(--perigo); font-size: 14px; font-weight: 600; }

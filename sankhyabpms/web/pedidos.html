@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verificação de Pedidos</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 14px 0; }
+  .kpi { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 10px 14px; }
+  .kpi b { display: block; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--suave); font-size: 12px; }
+  .kpi.alerta b { color: var(--perigo); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--linha); background: var(--card); color: var(--texto); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .chip.ativo { border-color: var(--local); background: var(--local-claro); color: var(--local); font-weight: 700; }
+  .sit { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; }
+  .sit.falta, .sit.sem { background: var(--perigo); }
+  .sit.baixo, .sit.conferir { background: var(--aviso); color: var(--card); }
+  .sit.ok { background: var(--local); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.neg { color: var(--perigo); font-weight: 700; }
+  .obs { color: var(--suave); font-size: 12px; margin-top: 3px; }
+  tr.detalhe > td { background: var(--bg); padding: 8px 12px; }
+  tr.detalhe table { width: 100%; }
+  .abrir-det { background: none; border: 0; color: var(--local); font: inherit; font-size: 13px; cursor: pointer; padding: 0; white-space: nowrap; }
+  .log.curto { max-height: 180px; overflow: auto; }
+  tr.nao-medicao > td:first-child { box-shadow: inset 4px 0 0 var(--aviso); }
+  .selo-tipo { display: inline-block; margin-top: 4px; padding: 1px 7px; border: 1px solid var(--aviso); border-radius: 999px; background: var(--aviso-claro); color: var(--aviso); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .tipo-ok { color: var(--suave); font-size: 11px; margin-top: 2px; }
+  .faixa-manual { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 10px 14px; border: 1px solid var(--aviso); border-left-width: 5px; border-radius: var(--raio); background: var(--aviso-claro); }
+  .faixa-manual b { color: var(--aviso); }
+  .faixa-manual ul { margin: 4px 0 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="pedidos.titulo">Verificação de Pedidos</h1>
+      <p data-texto="pedidos.subtitulo">Pedidos 110401 e 110501 x tarefas da semana · só leitura · checagem às 08h e pelo botão</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="pedidos"></span>
+  </div>
+  <p class="explicacao" data-texto="card.pedidos.descricao">Compara o saldo de horas de cada pedido com as tarefas alocadas no período que ainda não terminaram, e mostra onde as horas não são suficientes. Conta todos os Apontamentos de OS, e Hora Dobrada vale 1x. Alerta novo ou pior na semana atual vai por e-mail. Nada é alterado no ClickUp nem no Experience.</p>
+
+  <section class="card faixa">
+    <div class="campos">
+      <div class="campo c3"><label for="de">Data inicial</label><input id="de"></div>
+      <div class="campo c3"><label for="ate">Data final</label><input id="ate"></div>
+      <div class="campo c6"><div class="acoes" style="margin:0;padding-top:22px">
+        <button class="btn secundario" id="btn-semana" type="button">Semana atual</button>
+        <button class="btn" id="btn-verificar" type="button">Verificar pedidos</button>
+        <button class="btn secundario" id="btn-om" type="button">Conectar ao OM</button>
+        <span class="ajuda" id="om-status"></span>
+      </div></div>
+    </div>
+    <pre class="log curto oculto" id="log"></pre>
+    <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+  </section>
+
+  <div id="painel" class="oculto">
+    <p class="ajuda" id="quando"></p>
+    <div class="kpis" id="kpis"></div>
+    <div class="faixa-manual oculto" id="faixa-manual" role="status"></div>
+    <div class="chips" id="chips"></div>
+    <section class="card">
+      <div class="tabela-caixa">
+        <table>
+          <thead><tr><th>Situação</th><th>Parceiro</th><th>FAP</th><th>Pedido</th><th class="num">Negociado</th><th class="num">Consumido</th><th class="num">Saldo</th><th class="num">Tarefas no período</th><th class="num">Sobra</th><th></th></tr></thead>
+          <tbody id="corpo"></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card oculto" id="card-avisos" style="margin-top:14px"><h2>Avisos</h2><ul id="avisos"></ul></section>
+    <p class="ajuda" id="rodape-conta"></p>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, esc, toast, dataValida } = BPMS;
+  BPMS.montarTopo("pedidos");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto") };
+  const CLASSE = { "FALTAM HORAS": "falta", "SEM PEDIDO": "sem", "SALDO BAIXO": "baixo", "CONFERIR": "conferir", "OK": "ok" };
+  const ALERTAS = ["FALTAM HORAS", "SEM PEDIDO", "SALDO BAIXO"];
+  let dados = null, filtro = "alertas", semana = {};
+  const hhmm = (m) => {
+    if (m === null || m === undefined) return "—";
+    const a = Math.abs(m);
+    return `${m < 0 ? "-" : ""}${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`;
+  };
+
+  function desenhar() {
+    const linhas = dados.linhas;
+    $("#painel").classList.remove("oculto");
+    $("#quando").textContent = `Período ${dados.de} a ${dados.ate} · verificado em ${dados.quando}${dados.origem === "08h" ? " (checagem das 08h)" : ""}. ${dados.email || ""}`;
+    const conta = (s) => linhas.filter((r) => r.situacao === s).length;
+    $("#kpis").innerHTML = [["FALTAM HORAS", "Faltam horas"], ["SEM PEDIDO", "Sem pedido"], ["SALDO BAIXO", `Saldo abaixo de ${dados.limite_baixo}h`], ["CONFERIR", "A conferir"], ["OK", "OK"]]
+      .map(([s, r]) => `<div class="kpi ${ALERTAS.includes(s) && conta(s) ? "alerta" : ""}"><b>${conta(s)}</b><span>${esc(r)}</span></div>`).join("");
+    const naoMedicao = linhas.filter((r) => r.medicao === false);
+    const manuais = naoMedicao.filter((r) => ALERTAS.includes(r.situacao));
+    const faixa = $("#faixa-manual");
+    faixa.classList.toggle("oculto", !manuais.length);
+    faixa.innerHTML = manuais.length ? `<span aria-hidden="true">🔒</span><div><b>${manuais.length} pedido(s) em alerta não são Medição.</b> A Central não ajusta esses pedidos, o ajuste é manual:<ul>`
+      + manuais.map((r) => `<li>${esc(r.parceiro)} (FAP ${esc(r.fap)}): pedido ${(r.pedidos || []).map((p) => `${esc(p.rotulo)}, ${esc(p.tipo)}`).join("; ")}. Sobra ${hhmm(r.sobra)}.</li>`).join("") + "</ul></div>" : "";
+    const opcoes = [["alertas", `Em alerta (${dados.alertas})`], ["naomedicao", `🔒 Não é Medição (${naoMedicao.length})`], ["todos", `Todos (${linhas.length})`]];
+    $("#chips").innerHTML = opcoes.map(([v, r]) => `<button class="chip ${filtro === v ? "ativo" : ""}" data-f="${v}" type="button">${esc(r)}</button>`).join("");
+    const vis = filtro === "todos" ? linhas : filtro === "naomedicao" ? naoMedicao : linhas.filter((r) => ALERTAS.includes(r.situacao));
+    $("#corpo").innerHTML = vis.map((r, i) => `<tr class="${r.medicao === false ? "nao-medicao" : ""}">
+        <td><span class="sit ${CLASSE[r.situacao] || "conferir"}">${esc(r.situacao)}</span></td>
+        <td>${esc(r.parceiro)}${r.observacao ? `<div class="obs">${esc(r.observacao)}</div>` : ""}</td>
+        <td>${esc(r.fap)}</td>
+        <td>${(r.pedidos || []).map((p) => `${esc(p.rotulo)}<div class="obs">${esc(p.natureza)}</div>`
+          + (p.medicao === false ? `<span class="selo-tipo" title="Só pedidos 104 - SERV MEDIÇÃO podem ser ajustados pela Central">🔒 ${esc(p.tipo)}</span>`
+            : p.tipo ? `<div class="tipo-ok">${esc(p.tipo)}</div>` : "")).join("") || "—"}</td>
+        <td class="num">${hhmm(r.negociado)}</td><td class="num">${hhmm(r.consumido)}</td><td class="num">${hhmm(r.saldo)}</td>
+        <td class="num">${hhmm(r.horas)}<div class="obs">${r.qtd_tarefas} tarefa(s)</div></td>
+        <td class="num ${r.sobra < 0 ? "neg" : ""}">${hhmm(r.sobra)}</td>
+        <td><button class="abrir-det" data-i="${i}" type="button">ver tarefas</button>
+          ${["FALTAM HORAS", "SALDO BAIXO"].includes(r.situacao) && (r.pedidos || []).length === 1 && r.medicao !== false
+            ? `<br><button class="abrir-det" data-ajuste="${esc(r.pedidos[0].rotulo)}" data-sobra="${r.sobra}" type="button">ajustar no OM</button>` : ""}</td>
+      </tr><tr class="detalhe oculto" id="det-${i}"><td colspan="10"><table>
+        <thead><tr><th>Data</th><th>Período</th><th class="num">Horas</th><th>Tarefa</th><th>Responsável</th><th>Status</th></tr></thead>
+        <tbody>${(r.tarefas || []).map((t) => `<tr><td>${esc(t.data)}</td><td>${esc(t.periodo)}</td><td class="num">${esc(t.horas)}</td>
+          <td><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.nome)}</a></td><td>${esc(t.responsavel)}</td><td>${esc(t.status)}</td></tr>`).join("")}</tbody>
+      </table></td></tr>`).join("") || `<tr><td colspan="10">Nenhum pedido em alerta neste período.</td></tr>`;
+    const av = dados.avisos || [];
+    $("#card-avisos").classList.toggle("oculto", !av.length);
+    $("#avisos").innerHTML = av.map((a) => `<li>${esc(a)}</li>`).join("");
+    const ig = dados.ignoradas || {};
+    $("#rodape-conta").textContent = `Sobra = saldo do pedido − horas das tarefas ainda não terminadas. Fora da conta: ${ig.encerradas || 0} encerrada(s), `
+      + `${ig.outro_apontamento || 0} sem Apontamento de OS, ${ig.planejamento || 0} em Planejamento e ${ig.lixeira || 0} na Lixeira.`;
+  }
+
+  document.addEventListener("click", (e) => {
+    const c = e.target.closest("[data-f]");
+    if (c) { filtro = c.dataset.f; desenhar(); return; }
+    const a = e.target.closest("[data-ajuste]");
+    if (a) { ajustar(a.dataset.ajuste, +a.dataset.sobra); return; }
+    const d = e.target.closest(".abrir-det");
+    if (d) $(`#det-${d.dataset.i}`).classList.toggle("oculto");
+  });
+
+  // 05/11/2026 (Fragoso): ajuste só da quantidade no OM, tipo 104, sempre confirmado. O Experience é manual.
+  const moeda = (v) => (v === null || v === undefined || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+  let horasDigitadas = "";
+  document.addEventListener("input", (e) => { if (e.target.id === "horas-somar") horasDigitadas = e.target.value; });
+  async function ajustar(pedido, sobra) {
+    const falta = Math.ceil(Math.max(0, -sobra) / 60);
+    horasDigitadas = String(Math.max(dados.sugestao_minima || 20, falta));
+    const ok = await BPMS.confirmar(`Ajustar o pedido ${pedido} no OM`,
+      `<p>Sugestão: <b>${esc(horasDigitadas)}h</b>${falta ? `. Faltam ${falta}h para cobrir o período` : ""} (mínimo sugerido: ${dados.sugestao_minima || 20}h).</p>`
+      + `<div class="campo"><label for="horas-somar">Horas a somar</label><input id="horas-somar" type="number" min="1" step="1" value="${esc(horasDigitadas)}"></div>`,
+      { botao: "Ver o recálculo" });
+    if (!ok) return;
+    let p;
+    try { p = await post("/api/pedidos/ajuste/preparar", { pedido, horas_somar: horasDigitadas }); }
+    catch (e) { return BPMS.informar("Ajuste não disponível", esc(e.message)); }
+    const certo = await BPMS.confirmar(`Gravar no OM o pedido ${esc(p.pedido)}?`,
+      `<ul><li><b>Parceiro:</b> ${esc(p.parceiro)}</li><li><b>Tipo:</b> ${esc(p.tipo)}</li><li><b>Natureza:</b> ${esc(p.natureza)}</li>`
+      + `<li><b>Horas:</b> ${esc(p.qtd_atual)}h → <b>${esc(p.qtd_nova)}h</b></li>`
+      + `<li><b>Valor do item:</b> ${moeda(p.valor_item_atual)} → <b>${moeda(p.valor_item_novo)}</b></li>`
+      + `<li><b>Valor da nota hoje:</b> ${moeda(p.valor_nota_atual)}. O OM recalcula o valor final ao gravar.</li></ul>`
+      + `<div class="aviso">Só a quantidade é alterada, e os valores são recalculados pelo OM. Depois, ajuste manualmente no Experience.</div>`,
+      { botao: "Gravar no OM", perigo: true });
+    if (!certo) return;
+    try {
+      const r = await post("/api/pedidos/ajuste/gravar", { pedido: p.pedido, qtd_nova: p.qtd_nova, dtalter: p.dtalter, confirmar: true });
+      const avisos = (r.surpresas || []).length
+        ? `<div class="aviso erro"><b>Confira no OM, mudou algo além do esperado:</b><ul>${r.surpresas.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>` : "";
+      BPMS.informar("Pedido ajustado no OM",
+        `<p>Pedido <b>${esc(r.pedido)}</b>: ${esc(r.qtd_atual)}h → <b>${esc(r.qtd_nova)}h</b>.<br>Valor da nota: ${moeda(r.valor_nota_atual)} → <b>${moeda(r.valor_nota_nova)}</b>.</p>`
+        + avisos + `<div class="aviso"><b>Falta ajustar no Experience</b>: pedido ${esc(r.pedido)} para ${esc(r.qtd_nova)}h. Até lá, o alerta continua.</div>`);
+    } catch (e) { BPMS.informar("Não gravou", esc(e.message)); }
+  }
+
+  async function statusOm() {
+    try {
+      const s = await get("/api/om/status");
+      $("#om-status").textContent = s.estado === "conectado" ? "OM conectado" : s.estado === "aguardando_login" ? "aguardando seu login no OM" : "OM não conectado";
+      $("#btn-om").textContent = s.estado !== "conectado" ? "Conectar ao OM" : s.janela_oculta ? "Mostrar janela do OM" : "Ocultar janela do OM";
+      $("#btn-om").dataset.acao = s.estado === "conectado" && !s.janela_oculta ? "ocultar" : "conectar";
+    } catch (e) { /* serviço fora do ar */ }
+  }
+  $("#btn-om").onclick = async () => {
+    try { await post($("#btn-om").dataset.acao === "ocultar" ? "/api/om/ocultar" : "/api/om/conectar"); }
+    catch (e) { toast(e.message, "erro"); }
+    statusOm();
+  };
+  statusOm();
+  setInterval(statusOm, 5000);
+
+  function terminou(t) {
+    $("#btn-verificar").disabled = false;
+    if (t && t.resultado) { dados = t.resultado; filtro = dados.alertas ? "alertas" : "todos"; desenhar(); }
+  }
+  $("#btn-semana").onclick = () => { $("#de").value = semana.de; $("#ate").value = semana.ate; };
+  $("#btn-verificar").onclick = () => {
+    const corpo = { de: $("#de").value.trim(), ate: $("#ate").value.trim() };
+    if (!dataValida(corpo.de)) return toast("Data inicial fora do formato DD/MM/AAAA.", "erro");
+    if (!dataValida(corpo.ate)) return toast("Data final fora do formato DD/MM/AAAA.", "erro");
+    $("#btn-verificar").disabled = true;
+    $("#log").classList.remove("oculto");
+    BPMS.iniciar("/api/pedidos/verificar", corpo, el, terminou);
+  };
+
+  (async () => {
+    try {
+      const r = await get("/api/pedidos/ultima");
+      semana = { de: r.de, ate: r.ate };
+      $("#de").value = r.de; $("#ate").value = r.ate;
+      if (r.resultado) { dados = r.resultado; filtro = dados.alertas ? "alertas" : "todos"; desenhar(); }
+    } catch (e) { toast(e.message, "erro"); }
+    BPMS.retomar(["pedidos"], el, terminou, () => { $("#btn-verificar").disabled = true; $("#log").classList.remove("oculto"); });
+  })();
+})();
+</script>
+</body>
+</html>

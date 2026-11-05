@@ -1,0 +1,851 @@
+{
+ "origem": "HAR do ajuste manual de 05/11/2026 (Central de Vendas), só nomes de campos.",
+ "leitura_itens": {
+  "dataSetID": "06M",
+  "entityName": "ItemNota",
+  "standAlone": true,
+  "orderByExpression": "SEQUENCIA",
+  "fields": [
+   "CODINDOPERITEM",
+   "IDDESCPARCERIA",
+   "VLRDESCPARCERIA",
+   "CODBARRAPDV",
+   "ALIQFUNTTEL",
+   "ALIQFUST",
+   "STATUSPROC",
+   "AD_CODADDON",
+   "AD_ADDONDC.DESCRADDON",
+   "BASEFUNTTEL",
+   "BASEFUST",
+   "VLRFUNTTEL",
+   "RESERVADO",
+   "VLRFUST",
+   "OPERATUAL",
+   "NROPROCESSO",
+   "CODPROD",
+   "Produto.DESCRPROD",
+   "CODVOLPAD",
+   "COMPLDESC",
+   "CODEMP",
+   "Empresa.NOMEFANTASIA",
+   "NUNOTA",
+   "SEQUENCIA",
+   "REFFORN",
+   "REFERENCIA",
+   "ESTOQUE",
+   "CODNATREND",
+   "CadastroNaturezaRendimentos.DESCNATREND",
+   "QTDPENDENTE",
+   "QTDNEG",
+   "QTDFORMULA",
+   "QTDCONFERIDA",
+   "VLRUNIT",
+   "VLRTOT",
+   "VLRTOTMOE",
+   "PERCDESC",
+   "CODVOL",
+   "Volume.DESCRVOL",
+   "CODVEND",
+   "Vendedor.APELIDO",
+   "CODLOCALORIG",
+   "LocalFinanceiro.DESCRLOCAL",
+   "CODLOCALDEST",
+   "LocalFinanceiroEntDest.DESCRLOCAL",
+   "CONTROLE",
+   "CONTROLEDEST",
+   "BASEICMS",
+   "ALIQICMS",
+   "VLRICMS",
+   "BASEIPI",
+   "ALIQIPI",
+   "VLRIPI",
+   "BASESUBSTIT",
+   "VLRSUBST",
+   "CODTRIB",
+   "CODEXEC",
+   "Vendedor2.APELIDO",
+   "ATUALESTOQUE",
+   "DTVIGOR",
+   "VLRSUGERIDO",
+   "CODCFO",
+   "CODOBSPADRAO",
+   "CUSTO",
+   "FATURAR",
+   "M3",
+   "NUTAB",
+   "OBSERVACAO",
+   "PENDENTE",
+   "QTDENTREGUE",
+   "RESERVA",
+   "STATUSNOTA",
+   "PERCREDVLRIPI",
+   "USOPROD",
+   "VLRCUS",
+   "VLRDESC",
+   "VLRDESCMOE",
+   "VLRDESCBONIF",
+   "VLRREPRED",
+   "VLRTOTLIQ",
+   "VLRTOTLIQMOE",
+   "VLRUNITLIQ",
+   "VLRUNITMOE",
+   "VLRUNITLIQMOE",
+   "ALIQICMSRED",
+   "CODMOTDESONERAST",
+   "CODPARCEXEC",
+   "BASESUBSTSEMRED",
+   "CODUSU",
+   "DTALTER",
+   "SOLCOMPRA",
+   "CODTRIBISS",
+   "CODCFPS",
+   "ALIQISS",
+   "ATUALESTTERC",
+   "TERCEIROS",
+   "PERCDESCBONIF",
+   "ENDIMAGEM",
+   "ALTURA",
+   "LARGURA",
+   "ESPESSURA",
+   "CODCAV",
+   "CODPROC",
+   "QTDPECA",
+   "PRECOBASE",
+   "VLRACRESCDESC",
+   "VLRRETENCAO",
+   "CSTIPI",
+   "CODENQIPI",
+   "PERCCOM",
+   "VLRCOM",
+   "ALTPRECO",
+   "QTDFIXADA",
+   "PERCCOMGER",
+   "VLRCOMGER",
+   "QTDWMS",
+   "BASICMMOD",
+   "BASICMSTMOD",
+   "CODPROMO",
+   "QTDFAT",
+   "VLRPROMO",
+   "BASESTUFDEST",
+   "QTDVOL",
+   "VLRLIQPROM",
+   "TIPOSEPARACAO",
+   "PRODUTOPESQUISADO",
+   "ORIGEMBUSCA",
+   "PERCDESCFORNECEDOR",
+   "CODDOCARRECAD",
+   "NUMDOCARRECAD",
+   "ALIQSTEXTRANOTA",
+   "PERCPUREZA",
+   "BASESTEXTRANOTA",
+   "QTDTRIBEXPORT",
+   "TIPENTREGA",
+   "ALIQSTFCPSTANT",
+   "PERCGERMIN",
+   "VLRICMSUFDEST",
+   "CODESPECST",
+   "VLRSUBSTUNITORIG",
+   "CODLOCALTERC",
+   "GERAPRODUCAO",
+   "NUMEROOS",
+   "NUFOP",
+   "FinalidadeOperacao.DESCRICAO",
+   "PRECOBASEQTD",
+   "BASESTANT",
+   "CODVOLPARC",
+   "GRUPOTRANSG",
+   "IDALIQICMS",
+   "VLRUNITLOC",
+   "PRODUTONFE",
+   "VLRICMSDIFERIDO",
+   "VLRPTOPUREZA",
+   "IDALIQICMSDIFICMS",
+   "GTINNFE",
+   "GTINTRIBNFE",
+   "STATUSLOTE",
+   "NUPROMOCAO",
+   "CODANTECIPST",
+   "NUMCONTRATO",
+   "DTINICIO",
+   "PERCDESCPROM",
+   "VLRUNITDOLAR",
+   "BASEISS",
+   "VLRISS",
+   "VARIACAOFCP",
+   "VLRTROCA",
+   "VLRSTEXTRANOTA",
+   "PERCDESCDIGITADO",
+   "BASEICMSSTFRETE",
+   "PERCDESCTGFDES",
+   "ICMSSTFRETE",
+   "VLRDESCDIGITADO",
+   "NUMPEDIDO2",
+   "SEQPEDIDO2",
+   "CODMOTDESONERAICMS",
+   "PERCDESCBASE",
+   "VLRSUBSTANT",
+   "BASESUBSTITANT",
+   "VLRICMSANT",
+   "ORIGPROD",
+   "CODTPA",
+   "TipoAtendimento.DESCRICAO",
+   "CSOSN",
+   "NRSERIERESERVA",
+   "QTDUNIDPAD",
+   "VLRUNIDPAD",
+   "MARCA",
+   "CODIGONFCOM",
+   "NCM",
+   "INDDEVOLUCAONFCOM",
+   "VITEM_IBSCBS",
+   "PESOBRUTO",
+   "INDTOT",
+   "IMPXML",
+   "PESOLIQ",
+   "BASESUBSTITUNITORIG",
+   "SEQUENCIAFISCAL",
+   "CODAGREGACAO",
+   "INDESCALA",
+   "CNPJFABRICANTE",
+   "CODBENEFNAUF",
+   "BASESTFCPINTANT",
+   "PERCSTFCPINTANT",
+   "VLRSTFCPINTANT",
+   "AD_COTACAO",
+   "VLRTOTLIQREF",
+   "VLRVENDAPROMO",
+   "VLRREPREDSEMDESC",
+   "BASECALCSTEXTRANOTA",
+   "REDBASEST",
+   "MARGLUCRO",
+   "IDALIQICMSAT",
+   "BASEICMSAT",
+   "ALIQICMSAT",
+   "ALIQINTERICMSAT",
+   "VLRICMSAT",
+   "ALIQFETHAB",
+   "VLRFETHAB",
+   "PERCUSAQUDECPE",
+   "VLRCUSAQUDECPE",
+   "VLRREPREDST",
+   "CODSIT08EFD",
+   "PERCUSAQUDECPEEST",
+   "TIPUTILCOM",
+   "UNIDADE",
+   "CODFCI",
+   "IDALIQISS",
+   "CODIPI",
+   "INDREPDES",
+   "CODEND",
+   "EnderecoArmazenagem.DESCREND",
+   "VLROUTROITEM",
+   "VLRCREDPRES",
+   "SEQFISCALAGRUP",
+   "NPROCSUFRAMA",
+   "CODPARCCOBRTERC",
+   "Parceiro.NOMEPARC",
+   "Produto.DESCRPROD",
+   "Produto.COMPLDESC",
+   "Produto.DECVLR",
+   "Produto.DECQTD",
+   "Produto.ORIGPROD",
+   "Produto.TIPCONTEST",
+   "Produto.USOPROD",
+   "Produto.TITCONTEST",
+   "Produto.UTILSMARTCARD",
+   "Produto.CODPRODSUBKIT",
+   "Produto.TIPOKIT",
+   "Produto.CONESTORIGPROD",
+   "Produto.USASERIEFAB",
+   "Produto.VALCBGLOBAL",
+   "Produto.ProdutoSubstitutoKit.DESCRPROD",
+   "Produto.ConfiguracaoKit.DISTDESCKITCOMP",
+   "Produto.ConfiguracaoGradeProduto.USAMASCARA",
+   "PRODUTOALTERNATIVO"
+  ],
+  "standAloneFieldsMD": {
+   "PRODUTOALTERNATIVO": {
+    "fieldType": "S",
+    "userType": "S"
+   }
+  },
+  "tryJoinedFields": true,
+  "parallelLoader": true,
+  "parentEntityName": "CabecalhoNota",
+  "crudListener": "br.com.sankhya.modelcore.comercial.ItemNotaCrudListener",
+  "criteria": {
+   "expression": "(this.SEQUENCIA > 0) AND  (NUNOTA = ?) ",
+   "parameters": [
+    {
+     "type": "N",
+     "value": "@NUNOTA@"
+    }
+   ]
+  },
+  "txProperties": {
+   "ehMateriaPrima": "false",
+   "tipMov": "P",
+   "mgecom.central.notas.tipmov": "P",
+   "mgecom.central.notas.codEmp": "182",
+   "codEmp": "182"
+  },
+  "ignoreListenerMethods": "",
+  "useDefaultRowsLimit": true,
+  "clientEventList": {
+   "clientEvent": [
+    {
+     "$": "br.com.sankhya.comercial.recalcula.pis.cofins"
+    },
+    {
+     "$": "br.com.sankhya.actionbutton.clientconfirm"
+    },
+    {
+     "$": "br.com.sankhya.aprovar.nota.apos.baixa"
+    },
+    {
+     "$": "br.com.sankhya.exibir.variacao.valor.item"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.compra.SolicitacaoComprador"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.valida.ChaveNFeCompraTerceiros"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.expedicao.SolicitarUsuarioConferente"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.nota.adicional.SolicitarUsuarioGerente"
+    },
+    {
+     "$": "br.com.sankhya.mgecomercial.event.cadastrarDistancia"
+    },
+    {
+     "$": "br.com.sankhya.mgecomercial.event.baixaPortal"
+    },
+    {
+     "$": "br.com.sankhya.mgecomercial.event.faturamento.confirmacao"
+    },
+    {
+     "$": "br.com.sankhya.mgecomercial.event.compensacao.credito.debito"
+    },
+    {
+     "$": "br.com.utiliza.dtneg.servidor"
+    },
+    {
+     "$": "br.com.sankhya.mgefin.solicitacao.liberacao.orcamento"
+    },
+    {
+     "$": "br.com.sankhya.exibe.msg.variacao.preco"
+    },
+    {
+     "$": "br.com.sankhya.importacaoxml.cfi.para.produto"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.parcelas.financeiro"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.cancelamento.notas.remessa"
+    },
+    {
+     "$": "comercial.status.nfcom.situacao.diferente"
+    },
+    {
+     "$": "br.com.sankhya.comercial.solicitaContingencia"
+    },
+    {
+     "$": "comercial.status.nfe.aceita.naoSomarItem"
+    },
+    {
+     "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais"
+    },
+    {
+     "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais.sem.limite"
+    },
+    {
+     "$": "central.save.grade.itens.mostrar.popup.serie"
+    },
+    {
+     "$": "central.save.grade.itens.mostrar.popup.info.lote"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.central.itens.VendaCasada"
+    },
+    {
+     "$": "br.com.sankhya.exclusao.gradeProduto"
+    },
+    {
+     "$": "br.com.sankhya.mgecomercial.event.estoque.componentes"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.verifica.existe.op.criada.para.item.nota"
+    },
+    {
+     "$": "br.com.sankhya.mgecomercial.event.estoque.insuficiente.produto"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.central.itens.KitRevenda"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.central.itens.KitRevenda.msgValidaFormula"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.imobilizado"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.item.multiplos.componentes.servico"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.coleta.entrega.recalculado"
+    },
+    {
+     "$": "br.com.sankhya.central.alteracao.moeda.cabecalho"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.event.troca.item.por.produto.substituto"
+    },
+    {
+     "$": "br.com.sankhya.mgecom.event.troca.item.por.produto.alternativo"
+    },
+    {
+     "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais.item"
+    },
+    {
+     "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais.item.sem.limite"
+    },
+    {
+     "$": "br.com.sankhya.mgeprod.producao.terceiro.inclusao.item.nota"
+    }
+   ]
+  }
+ },
+ "campos_calculo": [
+  "NUNOTA",
+  "CODPROD",
+  "CODVOL",
+  "SEQUENCIA",
+  "USOPROD",
+  "CONTROLE",
+  "QTDNEG",
+  "VLRTOT",
+  "VLRUNIT",
+  "VLRUNITLIQ",
+  "VLRDESC",
+  "PERCDESC",
+  "VLRCUS",
+  "PERCDESCBONIF",
+  "VLRDESCBONIF",
+  "QTDENTREGUE",
+  "QTDUNIDPAD",
+  "VLRUNIDPAD",
+  "PERCDESCDIGITADO",
+  "VLRDESCDIGITADO",
+  "PERCDESCTGFDES",
+  "CODEMP",
+  "CODLOCALORIG",
+  "PERCDESCBASE",
+  "PRECOBASE",
+  "NUTAB",
+  "AD_PRECO",
+  "NUPROMOCAO",
+  "VLRVENDAPROMO",
+  "CUSTO",
+  "TIPOSEPARACAO",
+  "BASEICMS",
+  "ALIQICMS",
+  "VLRICMS",
+  "BASESUBSTIT",
+  "VLRSUBST",
+  "VLRREPRED",
+  "BASESTUFDEST",
+  "VLRICMSUFDEST",
+  "BASESTANT",
+  "CODTRIB",
+  "BASEIPI",
+  "ALIQIPI",
+  "VLRIPI",
+  "VLRUNITMOE",
+  "VLRDESCMOE",
+  "VLRTOTMOE",
+  "VLRUNITLIQMOE",
+  "BASEISS",
+  "ALIQISS",
+  "VLRISS",
+  "M3",
+  "VLRTOTLIQREF"
+ ],
+ "campos_item": [
+  "CODINDOPERITEM",
+  "IDDESCPARCERIA",
+  "VLRDESCPARCERIA",
+  "CODBARRAPDV",
+  "ALIQFUNTTEL",
+  "ALIQFUST",
+  "STATUSPROC",
+  "AD_CODADDON",
+  "BASEFUNTTEL",
+  "BASEFUST",
+  "VLRFUNTTEL",
+  "RESERVADO",
+  "VLRFUST",
+  "OPERATUAL",
+  "NROPROCESSO",
+  "CODPROD",
+  "CODVOLPAD",
+  "COMPLDESC",
+  "CODEMP",
+  "NUNOTA",
+  "SEQUENCIA",
+  "REFFORN",
+  "REFERENCIA",
+  "ESTOQUE",
+  "CODNATREND",
+  "QTDPENDENTE",
+  "QTDNEG",
+  "QTDFORMULA",
+  "QTDCONFERIDA",
+  "VLRUNIT",
+  "VLRTOT",
+  "VLRTOTMOE",
+  "PERCDESC",
+  "CODVOL",
+  "CODVEND",
+  "CODLOCALORIG",
+  "CODLOCALDEST",
+  "CONTROLE",
+  "CONTROLEDEST",
+  "BASEICMS",
+  "ALIQICMS",
+  "VLRICMS",
+  "BASEIPI",
+  "ALIQIPI",
+  "VLRIPI",
+  "BASESUBSTIT",
+  "VLRSUBST",
+  "CODTRIB",
+  "CODEXEC",
+  "ATUALESTOQUE",
+  "DTVIGOR",
+  "VLRSUGERIDO",
+  "CODCFO",
+  "CODOBSPADRAO",
+  "CUSTO",
+  "FATURAR",
+  "M3",
+  "NUTAB",
+  "OBSERVACAO",
+  "RESERVA",
+  "STATUSNOTA",
+  "PERCREDVLRIPI",
+  "USOPROD",
+  "VLRCUS",
+  "VLRDESC",
+  "VLRDESCMOE",
+  "VLRDESCBONIF",
+  "VLRREPRED",
+  "VLRTOTLIQ",
+  "VLRTOTLIQMOE",
+  "VLRUNITLIQ",
+  "VLRUNITMOE",
+  "VLRUNITLIQMOE",
+  "ALIQICMSRED",
+  "CODMOTDESONERAST",
+  "CODPARCEXEC",
+  "BASESUBSTSEMRED",
+  "CODUSU",
+  "DTALTER",
+  "SOLCOMPRA",
+  "CODTRIBISS",
+  "CODCFPS",
+  "ALIQISS",
+  "ATUALESTTERC",
+  "TERCEIROS",
+  "PERCDESCBONIF",
+  "ENDIMAGEM",
+  "ALTURA",
+  "LARGURA",
+  "ESPESSURA",
+  "CODCAV",
+  "CODPROC",
+  "QTDPECA",
+  "PRECOBASE",
+  "VLRACRESCDESC",
+  "VLRRETENCAO",
+  "CSTIPI",
+  "CODENQIPI",
+  "PERCCOM",
+  "VLRCOM",
+  "ALTPRECO",
+  "QTDFIXADA",
+  "PERCCOMGER",
+  "VLRCOMGER",
+  "QTDWMS",
+  "BASICMMOD",
+  "BASICMSTMOD",
+  "CODPROMO",
+  "QTDFAT",
+  "VLRPROMO",
+  "BASESTUFDEST",
+  "QTDVOL",
+  "VLRLIQPROM",
+  "TIPOSEPARACAO",
+  "PRODUTOPESQUISADO",
+  "ORIGEMBUSCA",
+  "PERCDESCFORNECEDOR",
+  "CODDOCARRECAD",
+  "NUMDOCARRECAD",
+  "ALIQSTEXTRANOTA",
+  "PERCPUREZA",
+  "BASESTEXTRANOTA",
+  "QTDTRIBEXPORT",
+  "TIPENTREGA",
+  "ALIQSTFCPSTANT",
+  "PERCGERMIN",
+  "VLRICMSUFDEST",
+  "CODESPECST",
+  "VLRSUBSTUNITORIG",
+  "CODLOCALTERC",
+  "GERAPRODUCAO",
+  "NUMEROOS",
+  "NUFOP",
+  "PRECOBASEQTD",
+  "BASESTANT",
+  "CODVOLPARC",
+  "GRUPOTRANSG",
+  "IDALIQICMS",
+  "VLRUNITLOC",
+  "PRODUTONFE",
+  "VLRICMSDIFERIDO",
+  "VLRPTOPUREZA",
+  "IDALIQICMSDIFICMS",
+  "GTINNFE",
+  "GTINTRIBNFE",
+  "STATUSLOTE",
+  "NUPROMOCAO",
+  "CODANTECIPST",
+  "NUMCONTRATO",
+  "DTINICIO",
+  "PERCDESCPROM",
+  "VLRUNITDOLAR",
+  "BASEISS",
+  "VLRISS",
+  "VARIACAOFCP",
+  "VLRTROCA",
+  "VLRSTEXTRANOTA",
+  "PERCDESCDIGITADO",
+  "BASEICMSSTFRETE",
+  "PERCDESCTGFDES",
+  "ICMSSTFRETE",
+  "VLRDESCDIGITADO",
+  "NUMPEDIDO2",
+  "SEQPEDIDO2",
+  "CODMOTDESONERAICMS",
+  "PERCDESCBASE",
+  "VLRSUBSTANT",
+  "BASESUBSTITANT",
+  "VLRICMSANT",
+  "ORIGPROD",
+  "CODTPA",
+  "CSOSN",
+  "NRSERIERESERVA",
+  "QTDUNIDPAD",
+  "VLRUNIDPAD",
+  "MARCA",
+  "CODIGONFCOM",
+  "NCM",
+  "INDDEVOLUCAONFCOM",
+  "VITEM_IBSCBS",
+  "PESOBRUTO",
+  "INDTOT",
+  "IMPXML",
+  "PESOLIQ",
+  "BASESUBSTITUNITORIG",
+  "SEQUENCIAFISCAL",
+  "CODAGREGACAO",
+  "INDESCALA",
+  "CNPJFABRICANTE",
+  "CODBENEFNAUF",
+  "BASESTFCPINTANT",
+  "PERCSTFCPINTANT",
+  "VLRSTFCPINTANT",
+  "AD_COTACAO",
+  "VLRTOTLIQREF",
+  "VLRVENDAPROMO",
+  "VLRREPREDSEMDESC",
+  "BASECALCSTEXTRANOTA",
+  "REDBASEST",
+  "MARGLUCRO",
+  "IDALIQICMSAT",
+  "BASEICMSAT",
+  "ALIQICMSAT",
+  "ALIQINTERICMSAT",
+  "VLRICMSAT",
+  "ALIQFETHAB",
+  "VLRFETHAB",
+  "PERCUSAQUDECPE",
+  "VLRCUSAQUDECPE",
+  "VLRREPREDST",
+  "CODSIT08EFD",
+  "PERCUSAQUDECPEEST",
+  "TIPUTILCOM",
+  "UNIDADE",
+  "CODFCI",
+  "IDALIQISS",
+  "CODIPI",
+  "INDREPDES",
+  "CODEND",
+  "VLROUTROITEM",
+  "VLRCREDPRES",
+  "SEQFISCALAGRUP",
+  "NPROCSUFRAMA",
+  "CODPARCCOBRTERC"
+ ],
+ "tx_properties": {
+  "prop": [
+   {
+    "name": "br.com.sankhya.mgefin.checarfinanceiro.VlrEntrada",
+    "value": 0
+   },
+   {
+    "name": "br.com.sankhya.mgefin.recalculo.custopreco.Automatico",
+    "value": false
+   },
+   {
+    "name": "br.com.sankhya.mgefin.mostrar.sugestao.venda",
+    "value": true
+   },
+   {
+    "name": "br.com.sankhya.mgecom.gradeItens.pedidoWeb",
+    "value": false
+   }
+  ]
+ },
+ "eventos": {
+  "clientEvent": [
+   {
+    "$": "br.com.sankhya.comercial.recalcula.pis.cofins"
+   },
+   {
+    "$": "br.com.sankhya.actionbutton.clientconfirm"
+   },
+   {
+    "$": "br.com.sankhya.aprovar.nota.apos.baixa"
+   },
+   {
+    "$": "br.com.sankhya.exibir.variacao.valor.item"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.compra.SolicitacaoComprador"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.valida.ChaveNFeCompraTerceiros"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.expedicao.SolicitarUsuarioConferente"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.nota.adicional.SolicitarUsuarioGerente"
+   },
+   {
+    "$": "br.com.sankhya.mgecomercial.event.cadastrarDistancia"
+   },
+   {
+    "$": "br.com.sankhya.mgecomercial.event.baixaPortal"
+   },
+   {
+    "$": "br.com.sankhya.mgecomercial.event.faturamento.confirmacao"
+   },
+   {
+    "$": "br.com.sankhya.mgecomercial.event.compensacao.credito.debito"
+   },
+   {
+    "$": "br.com.utiliza.dtneg.servidor"
+   },
+   {
+    "$": "br.com.sankhya.mgefin.solicitacao.liberacao.orcamento"
+   },
+   {
+    "$": "br.com.sankhya.exibe.msg.variacao.preco"
+   },
+   {
+    "$": "br.com.sankhya.importacaoxml.cfi.para.produto"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.parcelas.financeiro"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.cancelamento.notas.remessa"
+   },
+   {
+    "$": "comercial.status.nfcom.situacao.diferente"
+   },
+   {
+    "$": "br.com.sankhya.comercial.solicitaContingencia"
+   },
+   {
+    "$": "comercial.status.nfe.aceita.naoSomarItem"
+   },
+   {
+    "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais"
+   },
+   {
+    "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais.sem.limite"
+   },
+   {
+    "$": "central.save.grade.itens.mostrar.popup.serie"
+   },
+   {
+    "$": "central.save.grade.itens.mostrar.popup.info.lote"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.central.itens.VendaCasada"
+   },
+   {
+    "$": "br.com.sankhya.exclusao.gradeProduto"
+   },
+   {
+    "$": "br.com.sankhya.mgecomercial.event.estoque.componentes"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.verifica.existe.op.criada.para.item.nota"
+   },
+   {
+    "$": "br.com.sankhya.mgecomercial.event.estoque.insuficiente.produto"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.central.itens.KitRevenda"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.central.itens.KitRevenda.msgValidaFormula"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.imobilizado"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.item.multiplos.componentes.servico"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.coleta.entrega.recalculado"
+   },
+   {
+    "$": "br.com.sankhya.central.alteracao.moeda.cabecalho"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.event.troca.item.por.produto.substituto"
+   },
+   {
+    "$": "br.com.sankhya.mgecom.event.troca.item.por.produto.alternativo"
+   },
+   {
+    "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais.item"
+   },
+   {
+    "$": "br.com.sankhya.modelcore.comercial.centrais.alteracao.pedido.venda.mais.item.sem.limite"
+   },
+   {
+    "$": "br.com.sankhya.mgeprod.producao.terceiro.inclusao.item.nota"
+   }
+  ]
+ }
+}

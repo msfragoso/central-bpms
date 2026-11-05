@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credenciais</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="credenciais.titulo">Credenciais</h1>
+      <p data-texto="credenciais.subtitulo">Senha que a Central usa para entrar no Experience</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="credenciais"></span>
+  </div>
+  <p class="explicacao" data-texto="card.credenciais.descricao">Primeiro troque a senha no próprio Experience. Depois grave a nova aqui: a Central testa o login uma vez e só guarda no cofre do Windows se ele aceitar. O token do ClickUp não muda.</p>
+
+  <section class="card faixa" style="max-width:560px">
+    <h2>Senha do Experience</h2>
+    <div class="aviso erro oculto" id="aviso-senha" role="alert"></div>
+    <div class="aviso erro oculto" id="so-local">Por segurança, esta tela só funciona pelo atalho da Central neste computador (endereço 127.0.0.1).</div>
+    <form id="form" autocomplete="off">
+      <div class="campo"><label>Usuário</label><input id="usuario" readonly></div>
+      <div class="campo"><label for="senha">Senha nova</label><input id="senha" type="password" autocomplete="new-password" spellcheck="false"></div>
+      <div class="campo"><label class="checar"><input type="checkbox" id="mostrar"> Mostrar a senha</label></div>
+      <div class="acoes"><button class="btn" id="btn-gravar" type="submit">Testar e gravar</button></div>
+      <p class="ajuda" id="resultado" role="status"></p>
+    </form>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, toast } = BPMS;
+  BPMS.montarTopo("credenciais");
+  const local = ["127.0.0.1", "localhost"].includes(location.hostname);
+  if (!local) {
+    $("#so-local").classList.remove("oculto");
+    $("#form").classList.add("oculto");
+    return;
+  }
+  function mostrarAviso(a) {
+    const c = $("#aviso-senha");
+    c.classList.toggle("oculto", !a);
+    if (a) c.textContent = a.expirada
+      ? `Sua senha do Experience expirou (visto em ${a.quando}). Os processos que entram no Experience não vão funcionar até você trocar a senha lá e gravar a nova aqui.`
+      : `O Experience recusou a senha gravada em ${a.quando}: ${a.motivo}. Confira a senha antes de rodar os processos.`;
+  }
+  get("/api/credenciais/experience").then((r) => { $("#usuario").value = r.usuario; mostrarAviso(r.aviso); }).catch((e) => toast(e.message, "erro"));
+  $("#mostrar").onchange = () => { $("#senha").type = $("#mostrar").checked ? "text" : "password"; };
+  $("#form").onsubmit = async (e) => {
+    e.preventDefault();
+    const res = $("#resultado");
+    const senha = $("#senha").value;
+    if (!senha.trim()) { $("#senha").focus(); return toast("Digite a senha nova.", "erro"); }
+    $("#btn-gravar").disabled = true;
+    res.className = "ajuda"; res.textContent = "Testando o login no Experience…";
+    try {
+      const r = await post("/api/credenciais/experience", { senha, confirmar: true });
+      res.className = "ajuda ok";
+      res.textContent = `Senha gravada em ${r.quando}. Já vale para os próximos processos, sem reiniciar.`;
+      toast("Senha gravada no cofre.", "ok");
+      mostrarAviso(null);
+      document.querySelector(".barra-credencial")?.remove();
+    } catch (err) {
+      res.className = "ajuda erro";
+      res.textContent = err.message;
+    } finally {
+      $("#senha").value = ""; $("#senha").type = "password"; $("#mostrar").checked = false;
+      $("#btn-gravar").disabled = false;
+    }
+  };
+})();
+</script>
+</body>
+</html>

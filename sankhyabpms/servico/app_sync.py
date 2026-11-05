@@ -12,7 +12,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from nucleo import GERENTE, PASTAS, ErroUsuario, exigir_confirmacao, marcar_uso, periodo_br, rota
+from nucleo import GERENTE, PASTAS, Cancelada, ErroUsuario, exigir_confirmacao, marcar_uso, periodo_br, rota
 
 _cache = {"listas": None, "quando": 0}
 _cache_lock = threading.Lock()
@@ -243,10 +243,27 @@ def executar(req):
         raise ErroUsuario("Consultor não encontrado na lista do ClickUp. Atualize a página e escolha de novo.")
     consultor = [todos[x] for x in dict.fromkeys(ids)] or None
 
+    def anexar_logs(t, inicio):
+        logs = sorted((p for p in glob.glob(os.path.join(PASTAS["raiz"], "logs", "log_*.txt"))
+                       if os.path.getmtime(p) >= inicio - 1), key=os.path.getmtime)
+        for i, p in enumerate(logs):
+            t.adicionar_arquivo("Log completo (.txt)" if i == 0 else f"Log do sync após cadastro {i} (.txt)", p)
+
     def trabalho(t):
+        import parada_sync
+        parada_sync.limpar()
+        inicio = time.time()
+        try:
+            return _trabalho(t, inicio)
+        except parada_sync.ParadaSolicitada:
+            anexar_logs(t, inicio)
+            raise Cancelada("Sync parado por você. O que já foi feito continua valendo; rode de novo para concluir o resto.")
+        finally:
+            parada_sync.limpar()
+
+    def _trabalho(t, inicio):
         m = _modulo_main()
         ui._salvar_ultima_execucao(parceiro, valor_modelo)
-        inicio = time.time()
         cache_listas = {"dados": _cache["listas"]}
         fora = _rodar_fluxo(m, parceiro or None, ini.isoformat(), fim.isoformat(), modelo_filtro, cache_listas, t,
                             consultor=consultor)
@@ -261,10 +278,7 @@ def executar(req):
 
         _cadastrar_fora(fora, t, rerodar)
         os_data = leituras["os"]
-        logs = sorted((p for p in glob.glob(os.path.join(PASTAS["raiz"], "logs", "log_*.txt"))
-                       if os.path.getmtime(p) >= inicio - 1), key=os.path.getmtime)
-        for i, p in enumerate(logs):
-            t.adicionar_arquivo("Log completo (.txt)" if i == 0 else f"Log do sync após cadastro {i} (.txt)", p)
+        anexar_logs(t, inicio)
         marcar_uso("sync")
         msg = "Execução finalizada. Confira o relatório final no log."
         feitos = sum(1 for c in fora if c.get("situacao") == "CADASTRADO")
@@ -279,6 +293,19 @@ def executar(req):
     alvo = (parceiro or "todos os parceiros") + (f" · {', '.join(c['nome'] for c in consultor)}" if consultor else "")
     t = GERENTE.iniciar("sync", f"Sync tarefa ClickUp ⇄ Experience ({alvo})", trabalho, pasta=PASTAS["raiz"])
     return 200, {"tarefa": t.id}
+
+
+@rota("POST", "/api/sync/parar")
+def parar(req):
+    """05/11/2026 (Fragoso): pede a parada do sync. Ele para no próximo ponto seguro (ver parada_sync.py)."""
+    exigir_confirmacao(req)
+    rodando = next((t for t in GERENTE.ativas if t.tipo == "sync"), None)
+    if not rodando:
+        raise ErroUsuario("Não há sincronização rodando.")
+    import parada_sync
+    parada_sync.pedir()
+    rodando.log("\n⏹ Parada pedida na tela: termino a operação em andamento e paro no próximo ponto seguro...")
+    return 200, {"ok": True}
 
 
 # ============================================================================

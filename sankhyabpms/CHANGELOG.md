@@ -8,6 +8,16 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.8.0 — 05/11/2026
+- Nova tela Verificação de Pedidos: compara o saldo dos pedidos 110401 e 110501 com as tarefas
+  de OS da semana, às 08h e pelo botão, e avisa por e-mail. Pedido que não é Medição é sinalizado.
+- Ajustar no OM, na Verificação de Pedidos: só pedido 104 - SERV MEDIÇÃO e só a quantidade, com
+  o recálculo do OM e sempre com confirmação. O ajuste no Experience continua manual.
+- Nova tela Credenciais: testa e grava a senha do Experience, com aviso de senha expirada em
+  todas as telas.
+- Sync: botão Parar Sync. Tarefa sem responsável não vai para o Experience. Grupos grandes não
+  repetem a alteração de lançamentos que já estão certos.
+
 ## 1.7.4 — 04/11/2026
 - Lançar ClickUp: quando o ClickUp não libera os nomes da equipe para a conta, o Responsável já
   vem preenchido com o nome da própria pessoa.

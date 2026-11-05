@@ -33,7 +33,7 @@ import rotas_atualizacao  # noqa: E402,F401
 # Módulos (telas) carregados. config.json pode limitar com "modulos": ["lancar"]
 # -- usado no pacote "só Lançar ClickUp" para outro computador (20/10/2026).
 MODULOS = CONFIG.get("modulos") or ["lancar", "fase3", "conferencia", "aceite", "sync", "om", "agenda", "atendimentos",
-                                   "permissoes", "backlog", "planilhas"]
+                                   "permissoes", "backlog", "planilhas", "pedidos", "credenciais"]
 for _m in MODULOS:
     importlib.import_module(f"app_{_m}")
 
@@ -135,6 +135,9 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._enviar(400, {"erro": "JSON inválido."})
         url = urlparse(self.path)
+        # 05/11/2026: a senha só passa pela página servida aqui, nunca pelo site do GitHub.
+        if unquote(url.path).startswith("/api/credenciais/") and (self.headers.get("Origin") or "").split("://")[-1] not in HOSTS_OK:
+            return self._enviar(403, {"erro": "Por segurança, esta ação só funciona pelo atalho da Central neste computador."})
         self._api("POST", unquote(url.path), {}, corpo)
 
     def do_OPTIONS(self):

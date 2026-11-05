@@ -69,7 +69,8 @@
           <span class="ajuda">Filtra as listas pelo modelo do projeto vinculado no Experience. "Todos" mantém o comportamento de sempre.</span>
         </div>
       </div>
-      <div class="acoes"><button class="btn" id="btn-executar">Executar sincronização</button></div>
+      <div class="acoes"><button class="btn" id="btn-executar">Executar sincronização</button>
+        <button class="btn perigo oculto" id="btn-parar" type="button">Parar Sync</button></div>
     </section>
 
     <section class="card">
@@ -337,6 +338,34 @@
     travar(true);
     BPMS.iniciar("/api/sync/executar", { ...corpo, confirmar: true }, el, aoTerminarSync);
   };
+
+  // 05/11/2026 (Fragoso): parar a sincronização. O botão só aparece com o sync rodando.
+  let pararPedido = false;
+  async function mostrarParar() {
+    try {
+      const s = await get("/api/status");
+      const rodando = (s.ativas || []).some((t) => t.tipo === "sync");
+      if (!rodando) pararPedido = false;
+      const b = $("#btn-parar");
+      b.classList.toggle("oculto", !rodando);
+      b.disabled = pararPedido;
+      b.textContent = pararPedido ? "Parando…" : "Parar Sync";
+    } catch (e) { /* serviço fora do ar: a pílula do topo já avisa */ }
+  }
+  $("#btn-parar").onclick = async () => {
+    const ok = await confirmar("Parar a sincronização?",
+      "O sync termina a operação em andamento e para antes da próxima tarefa. O que já foi feito continua valendo, e o resto fica para a próxima execução.",
+      { botao: "Parar", perigo: true });
+    if (!ok) return;
+    try {
+      await BPMS.post("/api/sync/parar", { confirmar: true });
+      pararPedido = true;
+      toast("Parando no próximo ponto seguro. Acompanhe no log.");
+      mostrarParar();
+    } catch (e) { toast(e.message, "erro"); }
+  };
+  mostrarParar();
+  setInterval(mostrarParar, 3000);
 
   (async () => {
     try {

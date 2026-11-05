@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.7.4";
+  const VERSAO = "1.8.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -16,6 +16,8 @@ const BPMS = (() => {
     { id: "permissoes", href: "permissoes.html", rotulo: "Permissões ClickUp" },
     { id: "backlog", href: "backlog.html", rotulo: "Backlog Base" },
     { id: "planilhas", href: "planilhas.html", rotulo: "Conferência Planilhas" },
+    { id: "pedidos", href: "pedidos.html", rotulo: "Verificação de Pedidos" },
+    { id: "credenciais", href: "credenciais.html", rotulo: "Credenciais" },
   ];
 
   // 04/11/2026 (Fragoso): ícone de cada módulo, usado no menu do topo e nos cartões do Início
@@ -30,6 +32,8 @@ const BPMS = (() => {
     permissoes: '<path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
     backlog: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
     planilhas: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M10 4v16"/>',
+    pedidos: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h4"/>',
+    credenciais: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M13 10l2 2"/>',
     inicio: '<path d="M3 11l9-8 9 8"/><path d="M5 9.5V21h14V9.5M10 21v-6h4v6"/>',
   };
   const icone = (id) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONES[id] || ""}</svg>`;
@@ -75,6 +79,20 @@ const BPMS = (() => {
   }
   const get = (c) => api("GET", c);
   const post = (c, corpo = {}) => api("POST", c, corpo);
+
+  // ------------------------------------------------------------ aviso de senha expirada
+  // 05/11/2026 (Fragoso): em toda tela, avisa quando o Experience recusou a senha do cofre.
+  async function verificarCredencial(topo) {
+    let a;
+    try { a = (await get("/api/credenciais/aviso")).aviso; } catch (e) { return; }
+    if (!a) return;
+    const barra = document.createElement("div");
+    barra.className = "barra-credencial";
+    barra.setAttribute("role", "alert");
+    barra.innerHTML = `<span>${a.expirada ? "🔑 Sua senha do Experience expirou." : "🔑 O Experience recusou a senha gravada."} Os processos que entram lá não vão funcionar.</span>`
+      + (location.pathname.endsWith("credenciais.html") ? "" : ` <a class="btn pequeno" href="credenciais.html">Abrir Credenciais</a>`);
+    topo.append(barra);
+  }
 
   // ------------------------------------------------------------ atualização online
   // 04/11/2026 (Fragoso): ao abrir a tela, avisa se há versão nova no GitHub. Só atualiza com confirmação.
@@ -157,6 +175,7 @@ const BPMS = (() => {
     </div>`;
     document.body.prepend(topo);
     verificarAtualizacao(topo);
+    verificarCredencial(topo);
     $("#botao-editar").onclick = () => (document.body.classList.contains("editando") ? null : editarTextos());
     aplicarTextos().then(aplicarOrdemMenu).then(ajustarMenu);
     prepararMenu(topo);

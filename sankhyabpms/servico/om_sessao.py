@@ -332,6 +332,8 @@ class _Om:
             sktk = req.headers.get("sktk") or ""
             if mge and "consultaOs" in ((q.get("resourceID") or [""])[0]) and sktk:
                 self.sktk_consulta = (mge, sktk)   # token da licença da tela Consulta de OS
+            if mge and "CentralNotas" in ((q.get("resourceID") or [""])[0]) and sktk:
+                self.sktk_central = (mge, sktk)    # token da licença da Central de Vendas
             if mge:
                 antigo = self.sessao or {}
                 self.sessao = {"mgeSession": mge, "sktk": antigo.get("sktk", "") if antigo.get("mgeSession") == mge else "",
@@ -436,6 +438,55 @@ class _Om:
                     self.estado = "desconectado"
                     self.mensagem = "A sessão do Sankhya-OM expirou. Conecte de novo."
                 raise RuntimeError(f"OM: {msg}")
+            return j
+        return self._executar(fazer, timeout=180)
+
+    # ---------------------------------------------------------------- Central de Vendas
+    # 05/11/2026: ajuste de horas de pedido (ver om_ajuste_pedido.py). A tela abre numa aba própria
+    # da janela do OM, para não tirar a Consulta de OS do lugar.
+    URL_TELA_CENTRAL = ("https://skw.sankhya.com.br/mge/system.jsp#app/"
+                        "YnIuY29tLnNhbmtoeWEuY29tLm1vdi5DZW50cmFsTm90YXM=")
+    RESOURCE_CENTRAL = "br.com.sankhya.com.mov.CentralNotas"
+
+    def _token_central(self):
+        mge = self.sessao["mgeSession"]
+        pronto = lambda: getattr(self, "sktk_central", None) and self.sktk_central[0] == mge
+        if not pronto():
+            pagina = getattr(self, "_pagina_central", None)
+            if pagina is None or pagina.is_closed():
+                pagina = self._ctx.new_page()
+                self._pagina_central = pagina
+            pagina.goto(self.URL_TELA_CENTRAL, wait_until="domcontentloaded", timeout=60000)
+            limite = time.time() + 45
+            while time.time() < limite and not pronto():
+                pagina.wait_for_timeout(500)
+        if not pronto():
+            raise RuntimeError("A Central de Vendas não abriu na janela do Sankhya-OM. Nada foi alterado. "
+                               "Clique em 'Mostrar janela do OM' para ver o que aconteceu e tente de novo.")
+        return self.sktk_central[1]
+
+    def chamar_central(self, modulo, servico, corpo):
+        """POST com a licença da Central de Vendas. Só status "1" é sucesso: qualquer aviso do OM vira erro."""
+        if not self.sessao:
+            raise RuntimeError("Sankhya-OM não conectado. Conecte e faça o login.")
+
+        def fazer():
+            self._abrir()
+            sktk = self._token_central()
+            r = self._ctx.request.post(
+                f"https://skw.sankhya.com.br/{modulo}/service.sbr",
+                params={"serviceName": servico, "application": "CentralNotasStack", "outputType": "json",
+                        "preventTransform": "false", "mgeSession": self.sessao["mgeSession"],
+                        "resourceID": self.RESOURCE_CENTRAL, "vss": "1"},
+                headers={"Content-Type": "application/json; charset=UTF-8", "Origin": "https://skw.sankhya.com.br",
+                         "Referer": "https://skw.sankhya.com.br/mgecom/CentralNotasStack.xhtml5", "sktk": sktk},
+                data=json.dumps({"serviceName": servico, "requestBody": corpo}), timeout=120000)
+            try:
+                j = json.loads(r.text())
+            except ValueError:
+                raise RuntimeError(f"O OM respondeu algo inesperado (HTTP {r.status}). A sessão pode ter expirado.")
+            if str(j.get("status")) != "1":
+                raise RuntimeError(f"O OM não confirmou ({servico}): {j.get('statusMessage') or j.get('statusMessageID') or str(j)[:300]}")
             return j
         return self._executar(fazer, timeout=180)
 
