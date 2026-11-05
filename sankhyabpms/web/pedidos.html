@@ -160,6 +160,8 @@
       + `<div class="campo"><label for="horas-somar">Horas a somar</label><input id="horas-somar" type="number" min="1" step="1" value="${esc(horasDigitadas)}"></div>`,
       { botao: "Ver o recálculo" });
     if (!ok) return;
+    if (!await BPMS.garantirOm()) return;
+    statusOm();
     let p;
     try { p = await post("/api/pedidos/ajuste/preparar", { pedido, horas_somar: horasDigitadas }); }
     catch (e) { return BPMS.informar("Ajuste não disponível", esc(e.message)); }

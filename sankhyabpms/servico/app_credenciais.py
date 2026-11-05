@@ -60,6 +60,31 @@ def ver(req):
     return 200, {"usuario": keyring.get_password(SERVICO, "EXPERIENCE_USER") or "", "aviso": ler_json_dados(ARQ_AVISO) or None}
 
 
+@rota("GET", "/api/credenciais/om")
+def ver_om(req):
+    import keyring
+    from om_sessao import ARQ_LOGIN_PARADO
+    return 200, {"usuario": keyring.get_password(SERVICO, "OM_USER") or keyring.get_password(SERVICO, "EXPERIENCE_USER") or "", "senha_propria": bool(keyring.get_password(SERVICO, "OM_PASS")),
+                 "parado": ler_json_dados(ARQ_LOGIN_PARADO) or None}
+
+
+@rota("POST", "/api/credenciais/om")
+def gravar_om(req):
+    """Guarda o login do OM. Em branco, usa a senha do Experience. O teste é o próprio Conectar ao OM."""
+    exigir_confirmacao(req)
+    import keyring
+    from om_sessao import ARQ_LOGIN_PARADO
+    usuario = (req.corpo.get("usuario") or "").strip()
+    senha = (req.corpo.get("senha") or "").strip()
+    if not usuario:
+        raise ErroUsuario("Digite o usuário do Sankhya-OM.")
+    keyring.set_password(SERVICO, "OM_USER", usuario)
+    if senha:
+        keyring.set_password(SERVICO, "OM_PASS", senha)
+    gravar_json_dados(ARQ_LOGIN_PARADO, {})   # credencial nova: pode tentar de novo
+    return 200, {"ok": True, "usuario": usuario, "quando": time.strftime("%d/%m/%Y %H:%M")}
+
+
 @rota("GET", "/api/credenciais/aviso")
 def aviso(req):
     return 200, {"aviso": ler_json_dados(ARQ_AVISO) or None}
@@ -88,6 +113,10 @@ def gravar(req):
             motivo = _auth.ULTIMA_RECUSA.get("mensagem") or "sem resposta do Experience"
             raise ErroUsuario(f"O Experience recusou o teste ({motivo}). Nada foi gravado. Confira se a senha já foi trocada no Experience.")
         keyring.set_password(SERVICO, "EXPERIENCE_PASS", senha)
+        # Login único (Fragoso, 05/11/2026): a mesma senha vale para o Experience e o OM.
+        if keyring.get_password(SERVICO, "OM_PASS"):
+            keyring.set_password(SERVICO, "OM_PASS", senha)
+        gravar_json_dados("om_login_parado.json", {})
         _atualizar_em_memoria(usuario, senha)
         gravar_json_dados(ARQ_AVISO, {})
         marcar_uso("credenciais")

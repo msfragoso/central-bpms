@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.8.0";
+  const VERSAO = "1.9.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -384,6 +384,47 @@ const BPMS = (() => {
     ] });
   const informar = (titulo, html) => modal({ titulo, html, opcoes: [{ valor: true, rotulo: "OK" }] });
 
+  /**
+   * 05/11/2026 (Fragoso): garante a conexão com o Sankhya-OM sem precisar do botão Conectar. Abre a
+   * janela do OM, espera o login e segue sozinho. A senha é digitada pela pessoa, na página oficial.
+   * Devolve true quando pode seguir e false se a pessoa cancelou ou o tempo acabou.
+   */
+  async function garantirOm({ precisaConsulta = false } = {}) {
+    const pronto = (s) => s.estado === "conectado" && (!precisaConsulta || s.consulta_pronta);
+    let s;
+    try {
+      s = await get("/api/om/status");
+      if (pronto(s)) return true;
+      if (s.estado !== "conectado") {
+        s = await post("/api/om/conectar");
+        if (pronto(s)) return true;
+      }
+    } catch (e) { toast(e.message, "erro"); return false; }
+    return new Promise((resolver) => {
+      const fundo = document.createElement("div");
+      fundo.className = "fundo-modal";
+      fundo.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h3>Conectando ao Sankhya-OM</h3>
+        <div class="corpo" role="status">${s.estado === "conectado" ? "Abrindo a tela Consulta de OS…" : "Entrando no Sankhya-OM…"} Continuo sozinho assim que estiver pronto.</div>
+        <div class="rodape"><button class="btn secundario" type="button">Cancelar</button></div></div>`;
+      let ativo = true;
+      const fim = (valor) => { ativo = false; fundo.remove(); resolver(valor); };
+      $("button", fundo).onclick = () => fim(false);
+      document.body.append(fundo);
+      const limite = Date.now() + 300000;
+      const conferir = async () => {
+        if (!ativo) return;
+        try {
+          const atual = await get("/api/om/status");
+          if (pronto(atual)) return fim(true);
+          if (atual.mensagem) $(".corpo", fundo).textContent = atual.mensagem;
+        } catch (e) { /* serviço reiniciando */ }
+        if (Date.now() > limite) { toast("O login no Sankhya-OM não terminou em 5 minutos. Tente de novo.", "erro"); return fim(false); }
+        setTimeout(conferir, 1500);
+      };
+      setTimeout(conferir, 1000);
+    });
+  }
+
   // ------------------------------------------------------------ tarefa (processo longo)
   /**
    * Acompanha uma tarefa do serviço: log ao vivo, perguntas, arquivos.
@@ -571,7 +612,7 @@ const BPMS = (() => {
     });
   }
 
-  return { $, $$, esc, normalizar, hojeBR, api, get, post, montarTopo, atualizarPilula, toast, modal, confirmar, informar,
+  return { $, $$, esc, normalizar, hojeBR, api, get, post, montarTopo, atualizarPilula, toast, modal, confirmar, informar, garantirOm,
            acompanhar, retomar, iniciar, mascaraData, dataValida, busca, ordenavel, comparar, arquivoBase64,
            icone, lerOrdem, ordenarPor, gravarOrdem };
 })();

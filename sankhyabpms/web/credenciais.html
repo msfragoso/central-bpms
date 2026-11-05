@@ -29,10 +29,22 @@
     <div class="aviso erro oculto" id="so-local">Por segurança, esta tela só funciona pelo atalho da Central neste computador (endereço 127.0.0.1).</div>
     <form id="form" autocomplete="off">
       <div class="campo"><label>Usuário</label><input id="usuario" readonly></div>
-      <div class="campo"><label for="senha">Senha nova</label><input id="senha" type="password" autocomplete="new-password" spellcheck="false"></div>
+      <div class="campo"><label for="senha">Senha nova (vale também para o Sankhya-OM)</label><input id="senha" type="password" autocomplete="new-password" spellcheck="false"></div>
       <div class="campo"><label class="checar"><input type="checkbox" id="mostrar"> Mostrar a senha</label></div>
       <div class="acoes"><button class="btn" id="btn-gravar" type="submit">Testar e gravar</button></div>
       <p class="ajuda" id="resultado" role="status"></p>
+    </form>
+  </section>
+
+  <section class="card faixa" style="max-width:560px;margin-top:14px">
+    <h2>Login do Sankhya-OM</h2>
+    <p class="ajuda">O Conectar ao OM entra sozinho com estes dados. Por padrão, usa o mesmo usuário e a mesma senha do Experience, então só grave aqui se forem diferentes. Se o OM pedir qualquer outra coisa ou recusar, ele para na hora, sem tentar de novo, e você continua na janela.</p>
+    <div class="aviso erro oculto" id="om-parado" role="alert"></div>
+    <form id="form-om" autocomplete="off">
+      <div class="campo"><label for="om-usuario">Usuário do OM</label><input id="om-usuario" autocomplete="off" spellcheck="false"></div>
+      <div class="campo"><label for="om-senha">Senha do OM</label><input id="om-senha" type="password" autocomplete="new-password" spellcheck="false" placeholder="Em branco: mantém a atual ou usa a do Experience"></div>
+      <div class="acoes"><button class="btn" id="btn-om-gravar" type="submit">Gravar login do OM</button></div>
+      <p class="ajuda" id="om-resultado" role="status"></p>
     </form>
   </section>
 </main>
@@ -56,6 +68,31 @@
   }
   get("/api/credenciais/experience").then((r) => { $("#usuario").value = r.usuario; mostrarAviso(r.aviso); }).catch((e) => toast(e.message, "erro"));
   $("#mostrar").onchange = () => { $("#senha").type = $("#mostrar").checked ? "text" : "password"; };
+  async function carregarOm() {
+    const r = await get("/api/credenciais/om");
+    $("#om-usuario").value = r.usuario;
+    const p = $("#om-parado");
+    p.classList.toggle("oculto", !r.parado);
+    if (r.parado) p.textContent = `Login automático parado em ${r.parado.quando}: ${r.parado.motivo} Depois de resolver, grave o login de novo para reativar.`;
+  }
+  carregarOm().catch((e) => toast(e.message, "erro"));
+  $("#form-om").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#btn-om-gravar").disabled = true;
+    const res = $("#om-resultado");
+    try {
+      const r = await post("/api/credenciais/om", { usuario: $("#om-usuario").value, senha: $("#om-senha").value, confirmar: true });
+      res.className = "ajuda ok";
+      res.textContent = `Login do OM gravado em ${r.quando}. O teste é o próximo Conectar ao OM.`;
+      await carregarOm();
+    } catch (err) {
+      res.className = "ajuda erro";
+      res.textContent = err.message;
+    } finally {
+      $("#om-senha").value = "";
+      $("#btn-om-gravar").disabled = false;
+    }
+  };
   $("#form").onsubmit = async (e) => {
     e.preventDefault();
     const res = $("#resultado");

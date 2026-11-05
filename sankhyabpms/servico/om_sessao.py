@@ -21,11 +21,21 @@ import threading
 import time
 from urllib.parse import parse_qs, urlparse
 
-from nucleo import dados_arquivo
+from nucleo import dados_arquivo, gravar_json_dados, ler_json_dados
 
 URL_OM = "https://skw.sankhya.com.br/mge/"
 SERVICO = "https://skw.sankhya.com.br/mge/service.sbr"
 PERFIL = dados_arquivo("om_perfil")
+ARQ_LOGIN_PARADO = "om_login_parado.json"
+# 05/11/2026: a página pede ao Chrome uma credencial salva, e o popup "Fazer login como" prende o login
+# (é janela do navegador, a automação não alcança). Aqui o Chrome responde "nenhuma" e a página segue.
+SEM_POPUP_DE_LOGIN = """
+if (navigator.credentials) {
+  navigator.credentials.get = () => Promise.resolve(null);
+  navigator.credentials.store = (c) => Promise.resolve(c);
+}
+"""
+COFRE = "sankhya_experience_sync"
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 
@@ -70,6 +80,16 @@ def _pid_chrome_do_perfil(perfil):
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True,
                        text=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
     return int(r.stdout.strip())
+
+
+def credenciais_om():
+    """(usuário, senha) do OM no cofre. O login é único (Fragoso, 05/11/2026): sem dados próprios, usa os do Experience."""
+    import keyring
+    usuario = (keyring.get_password(COFRE, "OM_USER") or keyring.get_password(COFRE, "EXPERIENCE_USER") or "").strip()
+    if not usuario:
+        return None
+    senha = keyring.get_password(COFRE, "OM_PASS") or keyring.get_password(COFRE, "EXPERIENCE_PASS") or ""
+    return (usuario, senha) if senha else None
 
 
 class _Om:
@@ -310,6 +330,7 @@ class _Om:
             opcoes["channel"] = "chrome"
         self._pid_chrome = None
         self._ctx = self._pw.chromium.launch_persistent_context(PERFIL, **opcoes)
+        self._ctx.add_init_script(SEM_POPUP_DE_LOGIN)
         self._ctx.on("request", self._ver_requisicao)
         self._ctx.on("close", lambda *_: self._fechou())
 
@@ -354,10 +375,66 @@ class _Om:
                 self._janela("normal")   # precisa do login: a janela volta para a frente
                 self.estado = "aguardando_login"
                 self.mensagem = "Faça o login na janela do Sankhya-OM que abriu."
+                self._login_automatico(pagina)
             else:
                 self._janela("normal")   # já logado: o botão mostra a janela oculta
             return True
         return self._executar(abrir)
+
+    def _parar_login(self, motivo):
+        """Uma tentativa só: repetir login recusado pode bloquear a conta. Volta a tentar depois de gravar de novo."""
+        gravar_json_dados(ARQ_LOGIN_PARADO, {"motivo": motivo, "quando": time.strftime("%d/%m/%Y %H:%M")})
+        self.mensagem = f"Login automático parado: {motivo} Continue na janela do Sankhya-OM."
+
+    def _login_automatico(self, pagina):
+        """
+        05/11/2026 (Fragoso): preenche usuário e senha do cofre na página oficial do OM. Só segue pelo
+        caminho esperado. Qualquer outro pedido (código, troca de senha, aviso, senha recusada) para
+        na hora, com a janela aberta, sem tentar de novo. Nunca registra a senha.
+        """
+        if ler_json_dados(ARQ_LOGIN_PARADO):
+            return
+        try:
+            cred = credenciais_om()
+        except Exception:
+            cred = None
+        if not cred:
+            return
+        try:
+            campo_usuario = pagina.locator("input#user")
+            campo_senha = pagina.locator("input[type=password]").first
+            try:
+                campo_usuario.or_(campo_senha).first.wait_for(state="visible", timeout=15000)
+            except Exception:
+                return   # sem tela de login: já está logado ou a página mudou; segue pelo fluxo normal
+            self.mensagem = "Entrando no Sankhya-OM com o usuário do cofre..."
+            if campo_usuario.is_visible():
+                campo_usuario.fill(cred[0])
+                pagina.locator("button[type=submit]:visible").first.click()
+                try:
+                    campo_senha.wait_for(state="visible", timeout=15000)
+                except Exception:
+                    return self._parar_login("o OM não pediu a senha depois do usuário.")
+            elif pagina.get_by_text(cred[0]).count() == 0:
+                # O OM lembra o último usuário e já abre na senha: só segue se for o mesmo do cofre.
+                return self._parar_login("a tela de senha é de outro usuário.")
+            outros = [c for c in pagina.locator("input:visible").all()
+                      if (c.get_attribute("type") or "text").lower() not in ("password", "hidden", "checkbox")
+                      and c.get_attribute("id") != "user"]
+            if outros:
+                return self._parar_login("o OM pediu mais um dado junto com a senha.")
+            campo_senha.fill(cred[1])
+            pagina.locator("button[type=submit]:visible").first.click()
+            limite = time.time() + 30
+            while time.time() < limite and not self.sessao:
+                pagina.wait_for_timeout(500)
+                if not self.sessao:
+                    self._sessao_pelas_telas()
+            if not self.sessao:
+                return self._parar_login("o login não terminou. Pode ser senha recusada, código ou troca de senha.")
+            self.mensagem = "Conectado ao Sankhya-OM."
+        except Exception:
+            self._parar_login("a página do OM não seguiu o caminho esperado.")
 
     def ocultar(self):
         """Oculta de novo a janela que o usuário pediu para ver."""

@@ -293,8 +293,10 @@
   $("#btn-conferir").onclick = async () => {
     if (!periodoOk()) return;
     if (!pelaApi() && !$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
-    if (origemSk() === "om" && omEstado === "sem_tela") return toast("No Sankhya-OM, abra a tela 'Consulta de OS' pelo menu (na janela da Central) e tente de novo.", "erro");
-    if (origemSk() === "om" && omEstado !== "conectado") return toast("Conecte ao Sankhya-OM primeiro: clique em 'Conectar ao Sankhya-OM' e faça o login na janela que abrir.", "erro");
+    if (origemSk() === "om") {
+      if (!await BPMS.garantirOm({ precisaConsulta: true })) return;
+      await statusOm();
+    }
     if (origemSk() === "excel" && !$("#sankhya").files[0]) return toast("Selecione o Excel do Sankhya.", "erro");
     $("#pdf-linha").classList.add("oculto");
     const atualizar = $("#atualizar").checked;

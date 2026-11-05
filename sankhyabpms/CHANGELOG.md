@@ -8,9 +8,18 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.9.0 — 05/11/2026
+- Sankhya-OM: quando a Central precisa do OM, ela abre a janela, entra com o login do cofre e
+  continua sozinha. Faz uma tentativa só e para se o OM pedir qualquer outra coisa ou recusar.
+- Credenciais: seção Login do Sankhya-OM. Por padrão usa o mesmo login do Experience, e a senha
+  nova gravada vale para os dois.
+- Conferência de OS e Ajustar no OM não exigem mais clicar em Conectar antes.
+
 ## 1.8.0 — 05/11/2026
 - Nova tela Verificação de Pedidos: compara o saldo dos pedidos 110401 e 110501 com as tarefas
   de OS da semana, às 08h e pelo botão, e avisa por e-mail. Pedido que não é Medição é sinalizado.
+- Verificação de Pedidos: sem login no Experience, a verificação para em vez de gerar alertas
+  falsos, e a checagem das 08h tenta entrar só uma vez por dia.
 - Ajustar no OM, na Verificação de Pedidos: só pedido 104 - SERV MEDIÇÃO e só a quantidade, com
   o recálculo do OM e sempre com confirmação. O ajuste no Experience continua manual.
 - Nova tela Credenciais: testa e grava a senha do Experience, com aviso de senha expirada em
