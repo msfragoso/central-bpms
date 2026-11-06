@@ -50,6 +50,19 @@ def atualizar_membros(req):
     return 200, {"membros": membros}
 
 
+# 06/11/2026 (Fragoso): destinos liberados de forma específica, fora das listas "Avulso" -- a tarefa nasce
+# como subtarefa de uma tarefa pai escolhida (ex.: "Acompanhamento" de uma lista de projeto). Os destinos
+# ficam em dados/lancar_destinos.json, só neste computador (nomes de clientes não vão para o código):
+# [{"parceiro": "...", "lista_id": "...", "pai_id": "...", "rotulo": "..."}]
+ARQ_DESTINOS = "lancar_destinos.json"
+PREFIXO_DESTINO = "destino-"
+
+
+def _destinos(parceiro=None):
+    lista = ler_json_dados(ARQ_DESTINOS, []) or []
+    return [(i, d) for i, d in enumerate(lista) if parceiro is None or d.get("parceiro") == parceiro]
+
+
 @rota("GET", "/api/lancar/faps")
 def faps(req):
     m = _motor()
@@ -57,6 +70,8 @@ def faps(req):
     if parceiro not in m.OPCOES_PARCEIRO:
         raise ErroUsuario(f"O parceiro '{parceiro}' não é válido. Selecione um da lista.")
     lista = m.listar_faps_do_parceiro(parceiro, req.query.get("forcar") == "1")
+    lista = list(lista) + [{"id": f"{PREFIXO_DESTINO}{i}", "nome": d.get("rotulo") or "Destino específico", "pasta": ""}
+                           for i, d in _destinos(parceiro)]
     return 200, {"faps": lista}
 
 
@@ -292,6 +307,18 @@ def lancar(req):
             raise ErroUsuario("Selecione uma lista válida para o X-Interno.")
         list_id = destino["id"]
         interno_mensal = destino["mensal"]
+    elif str(c.get("fap_id") or "").startswith(PREFIXO_DESTINO):
+        # destino específico (ver _destinos): lista e tarefa pai fixas, sem 1-Atendimento Base nem mês
+        try:
+            destino = dict(_destinos())[int(str(c["fap_id"])[len(PREFIXO_DESTINO):])]
+        except (KeyError, ValueError):
+            raise ErroUsuario("Destino inválido. Recarregue a página e escolha de novo.")
+        if destino.get("parceiro") != parceiro:
+            raise ErroUsuario("Esse destino não é deste parceiro.")
+        list_id = str(destino.get("lista_id") or "").strip()
+        parent_id = str(destino.get("pai_id") or "").strip() or None
+        if not parent_id:
+            raise ErroUsuario("Destino sem tarefa pai configurada.")
     else:
         list_id = str(c.get("fap_id") or "").strip()
     if not list_id:

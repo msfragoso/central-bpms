@@ -8,6 +8,16 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.12.0 — 06/11/2026
+- Nova tela Organograma: pessoas da Sankhya por grupo e área (começa com os PO de Produtos), com
+  demandas resumidas por área e busca por pessoa, área ou demanda. Os nomes ficam só no computador.
+- Lançar ClickUp: destinos específicos por parceiro, fora das listas Avulso (a tarefa nasce como
+  subtarefa de uma tarefa pai escolhida). Configurados no próprio computador.
+- Conferência de OS: quando o tempo de uma OS muda no Sankhya depois de gravado (ex.: intervalo
+  corrigido), o tempo rastreado da tarefa é ajustado, com aviso para conferir no X-Observações OS e o
+  arquivo "OS com tempo alterado no Sankhya" na tela. Entrada de tempo lançada à mão não é apagada.
+- Organograma e Lançar: a tela avisa quando o serviço ainda está na versão anterior.
+
 ## 1.11.0 — 06/11/2026
 - Lançar ClickUp, para quem acessa só algumas pastas e listas: o Responsável lista as pessoas das
   tarefas que a conta enxerga (antes vinha só o próprio nome) e a tela abre na hora, com as listas

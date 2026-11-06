@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organograma</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .org-barra { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 4px 0 16px; }
+  .org-barra input { max-width: 320px; }
+  .org-raiz { display: flex; justify-content: center; margin-bottom: 18px; }
+  .org-no-raiz { background: var(--local); color: #fff; font-weight: 700; border-radius: 10px; padding: 10px 22px; box-shadow: var(--sombra); }
+  .org-grupo { margin-bottom: 26px; }
+  .org-grupo-titulo { display: flex; justify-content: center; position: relative; margin-bottom: 18px; }
+  .org-grupo-titulo span { background: var(--card); border: 2px solid var(--local); color: var(--local); font-weight: 700; border-radius: 10px; padding: 8px 18px; }
+  .org-grupo-titulo::before { content: ""; position: absolute; top: -18px; left: 50%; height: 18px; border-left: 2px solid var(--linha); }
+  .org-itens { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; position: relative; padding-top: 16px; border-top: 2px solid var(--linha); }
+  .org-item { background: var(--card); border: 1px solid var(--linha); border-top: 4px solid var(--local); border-radius: 10px; padding: 12px; box-shadow: var(--sombra); position: relative; }
+  .org-item h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--suave); }
+  .org-pessoa { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-weight: 600; }
+  .org-inicial { width: 30px; height: 30px; border-radius: 50%; background: var(--local-claro); color: var(--local); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+  .org-obs { font-size: 12px; color: var(--suave); margin-top: 6px; }
+  .org-outras { font-size: 11px; color: var(--suave); font-weight: 400; display: block; }
+  .org-item.marcado { outline: 3px solid var(--aviso); }
+  .org-demandas { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .org-demanda { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg); border: 1px solid var(--linha); color: var(--suave); }
+  .org-demanda.achada { background: var(--aviso); border-color: var(--aviso); color: #fff; font-weight: 700; }
+  .org-vazio { text-align: center; color: var(--suave); padding: 30px; }
+  .org-edicao .linha-ed { display: grid; grid-template-columns: 1fr 1.6fr 2fr 1.2fr auto; gap: 8px; margin-bottom: 8px; align-items: start; }
+  .org-edicao .grupo-ed { border: 1px solid var(--linha); border-radius: 10px; padding: 12px; margin-bottom: 14px; background: var(--card); }
+  .org-edicao .grupo-topo { display: flex; gap: 8px; margin-bottom: 10px; }
+  .org-edicao textarea { min-height: 38px; resize: vertical; }
+  @media (max-width: 720px) { .org-edicao .linha-ed { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="organograma.titulo">Organograma</h1>
+      <p data-texto="organograma.subtitulo">Pessoas da Sankhya que interessam ao PMO, por grupo e área</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="organograma"></span>
+  </div>
+  <p class="explicacao" data-texto="card.organograma.descricao">Os nomes ficam só neste computador. Use Editar para acrescentar grupos, áreas, pessoas e as demandas de cada área. A busca acha o PO ou SUP pela demanda.</p>
+
+  <div class="org-barra">
+    <input id="busca" type="search" placeholder="Buscar pessoa, área ou demanda" aria-label="Buscar pessoa, área ou demanda">
+    <button class="btn secundario" id="btn-editar" type="button">Editar</button>
+    <span class="ajuda" id="atualizado"></span>
+  </div>
+
+  <section id="visao"></section>
+
+  <section id="edicao" class="org-edicao oculto">
+    <div id="grupos-ed"></div>
+    <div class="acoes">
+      <button class="btn secundario" id="btn-grupo" type="button">+ Grupo</button>
+      <button class="btn" id="btn-salvar" type="button">Salvar organograma</button>
+      <button class="btn secundario" id="btn-cancelar" type="button">Cancelar</button>
+    </div>
+    <p class="ajuda">Em "Pessoas" e "Demandas", separe por ponto e vírgula (;). Quando houver alternativa, escreva "Fulano ou Beltrano" no mesmo nome.</p>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, $$, esc, get, post, toast, confirmar, normalizar } = BPMS;
+  BPMS.montarTopo("organograma");
+  let dados = { grupos: [] };
+
+  const iniciais = (nome) => nome.split(/\s+/).filter((p) => p.length > 2 || /^[A-Z]/.test(p)).slice(0, 2).map((p) => p[0].toUpperCase()).join("");
+  const norm = (s) => (normalizar ? normalizar(s) : String(s || "").toLowerCase());
+
+  function pessoaHtml(p) {
+    const partes = p.split(/\s+ou\s+/i);
+    const principal = partes[0];
+    const outras = partes.slice(1);
+    return `<div class="org-pessoa"><span class="org-inicial">${esc(iniciais(principal))}</span>
+      <span>${esc(principal)}${outras.length ? `<span class="org-outras">ou ${outras.map(esc).join(" ou ")}</span>` : ""}</span></div>`;
+  }
+
+  function desenhar() {
+    const termo = norm($("#busca").value.trim());
+    const v = $("#visao");
+    if (!dados.grupos.length) {
+      v.innerHTML = `<div class="org-vazio">Organograma vazio. Clique em Editar para começar.</div>`;
+      return;
+    }
+    v.innerHTML = `<div class="org-raiz"><div class="org-no-raiz">Sankhya</div></div>` + dados.grupos.map((g) => {
+      const itens = g.itens.filter((it) => !termo || norm(it.area).includes(termo) || norm(g.nome).includes(termo)
+        || it.pessoas.some((p) => norm(p).includes(termo)) || (it.demandas || []).some((d) => norm(d).includes(termo)));
+      if (termo && !itens.length) return "";
+      return `<div class="org-grupo"><div class="org-grupo-titulo"><span>${esc(g.nome)}</span></div>
+        <div class="org-itens">${itens.map((it) => `<div class="org-item ${termo ? "marcado" : ""}"><h3>${esc(it.area)}</h3>
+          ${it.pessoas.map(pessoaHtml).join("") || '<div class="org-obs">sem pessoa</div>'}
+          ${it.obs ? `<div class="org-obs">${esc(it.obs)}</div>` : ""}
+          ${(it.demandas || []).length ? `<div class="org-demandas">${it.demandas.map((d) =>
+            `<span class="org-demanda ${termo && norm(d).includes(termo) ? "achada" : ""}">${esc(d)}</span>`).join("")}</div>` : ""}</div>`).join("")}</div></div>`;
+    }).join("") || `<div class="org-vazio">Nada encontrado para "${esc($("#busca").value)}".</div>`;
+    $("#atualizado").textContent = dados.atualizado ? `Atualizado em ${dados.atualizado}` : "";
+  }
+
+  // ---------------------------------------------------------------- edição
+  function linhaEd(it = { area: "", pessoas: [], demandas: [], obs: "" }) {
+    const d = document.createElement("div");
+    d.className = "linha-ed";
+    d.innerHTML = `<input class="ed-area" placeholder="Área / produto" value="${esc(it.area)}">
+      <textarea class="ed-pessoas" placeholder="Pessoas (separe por ;)">${esc(it.pessoas.join("; "))}</textarea>
+      <textarea class="ed-demandas" placeholder="Demandas resumidas (separe por ;)">${esc((it.demandas || []).join("; "))}</textarea>
+      <input class="ed-obs" placeholder="Observação (opcional)" value="${esc(it.obs || "")}">
+      <button class="btn secundario pequeno" type="button" title="Remover área">✕</button>`;
+    d.querySelector("button").onclick = () => d.remove();
+    return d;
+  }
+  function grupoEd(g = { nome: "", itens: [] }) {
+    const d = document.createElement("div");
+    d.className = "grupo-ed";
+    d.innerHTML = `<div class="grupo-topo"><input class="ed-grupo" placeholder="Nome do grupo (ex.: PO de Produtos)" value="${esc(g.nome)}">
+      <button class="btn secundario pequeno ed-add" type="button">+ Área</button>
+      <button class="btn secundario pequeno ed-rem" type="button" title="Remover grupo">Remover grupo</button></div><div class="ed-linhas"></div>`;
+    const linhas = d.querySelector(".ed-linhas");
+    (g.itens.length ? g.itens : [undefined]).forEach((it) => linhas.append(linhaEd(it)));
+    d.querySelector(".ed-add").onclick = () => linhas.append(linhaEd());
+    d.querySelector(".ed-rem").onclick = () => d.remove();
+    return d;
+  }
+  function abrirEdicao(sim) {
+    $("#edicao").classList.toggle("oculto", !sim);
+    $("#visao").classList.toggle("oculto", sim);
+    $("#btn-editar").classList.toggle("oculto", sim);
+    if (sim) {
+      const c = $("#grupos-ed");
+      c.innerHTML = "";
+      (dados.grupos.length ? dados.grupos : [undefined]).forEach((g) => c.append(grupoEd(g)));
+    }
+  }
+  function lerEdicao() {
+    return { grupos: $$(".grupo-ed", $("#grupos-ed")).map((g) => ({
+      nome: $(".ed-grupo", g).value.trim(),
+      itens: $$(".linha-ed", g).map((l) => ({
+        area: $(".ed-area", l).value.trim(),
+        pessoas: $(".ed-pessoas", l).value.split(";").map((p) => p.trim()).filter(Boolean),
+        demandas: $(".ed-demandas", l).value.split(";").map((p) => p.trim()).filter(Boolean),
+        obs: $(".ed-obs", l).value.trim(),
+      })).filter((it) => it.area || it.pessoas.length),
+    })).filter((g) => g.nome || g.itens.length) };
+  }
+
+  $("#btn-editar").onclick = () => abrirEdicao(true);
+  $("#btn-cancelar").onclick = () => abrirEdicao(false);
+  $("#btn-grupo").onclick = () => $("#grupos-ed").append(grupoEd());
+  $("#btn-salvar").onclick = async () => {
+    const novo = lerEdicao();
+    const areas = novo.grupos.reduce((n, g) => n + g.itens.length, 0);
+    if (!await confirmar("Salvar organograma", `${novo.grupos.length} grupo(s) e ${areas} área(s). Os nomes ficam só neste computador.`, { botao: "Salvar" })) return;
+    try {
+      dados = await post("/api/organograma", { organograma: novo, confirmar: true });
+      abrirEdicao(false);
+      desenhar();
+      toast("Organograma salvo.");
+    } catch (e) { toast(e.message, "erro"); }
+  };
+  $("#busca").oninput = desenhar;
+
+  get("/api/organograma").then((r) => { dados = r; desenhar(); }).catch((e) => {
+    // serviço antigo (sem o módulo): não deixa editar um organograma vazio por cima do que já está gravado
+    $("#btn-editar").classList.add("oculto");
+    $("#visao").innerHTML = `<div class="org-vazio">${e.status === 404
+      ? "O serviço da Central ainda está na versão anterior. Rode o Reiniciar_Servico.bat e recarregue esta página (Ctrl+F5)."
+      : esc(e.message)}</div>`;
+  });
+})();
+</script>
+</body>
+</html>

@@ -461,8 +461,13 @@ def executar(req):
             if atualizar:
                 print("\n=== ETAPA 5: atualizando ClickUp ===")
                 from clickup_conferencia import ARQ_TEMPO_DIVIDIDO
-                if os.path.exists(ARQ_TEMPO_DIVIDIDO):
-                    os.remove(ARQ_TEMPO_DIVIDIDO)   # só o desta conferência
+                try:
+                    from clickup_conferencia import ARQ_TEMPO_ALTERADO
+                except ImportError:
+                    ARQ_TEMPO_ALTERADO = None
+                for arq in (ARQ_TEMPO_DIVIDIDO, ARQ_TEMPO_ALTERADO):
+                    if arq and os.path.exists(arq):
+                        os.remove(arq)   # só os desta conferência
                 headers = {"Authorization": get_clickup_token(), "Content-Type": "application/json"}
                 qtd, erros = atualizar_clickup(resultado, resultado.sankhya_df, headers)
                 if erros:
@@ -477,6 +482,15 @@ def executar(req):
                     with open(copia, encoding="utf-8-sig") as f:
                         n = max(sum(1 for _ in f) - 1, 0)
                     msg += f" ⚠ {n} tarefa(s) gêmea(s) com o tempo da OS dividido: confira no arquivo abaixo."
+                # 06/11/2026 (Fragoso): OS que mudou de tempo no Sankhya depois de gravada -- tempo ajustado, conferir.
+                if ARQ_TEMPO_ALTERADO and os.path.exists(ARQ_TEMPO_ALTERADO):
+                    import shutil
+                    copia = os.path.join(PASTA_CLICKUP, f"OS_tempo_alterado_{ini:%Y%m%d}_a_{fim:%Y%m%d}_{datetime.now():%H%M%S}.csv")
+                    shutil.copy2(ARQ_TEMPO_ALTERADO, copia)
+                    t.adicionar_arquivo("⚠ OS com tempo alterado no Sankhya - conferir (.csv)", copia)
+                    with open(copia, encoding="utf-8-sig") as f:
+                        n = max(sum(1 for _ in f) - 1, 0)
+                    msg += f" ⚠ {n} tarefa(s) com o tempo da OS alterado no Sankhya: confira no arquivo abaixo."
             else:
                 print("\nCaixa 'Atualizar ClickUp' desmarcada.")
                 msg = "Relatório gerado (nada foi alterado no ClickUp)."
