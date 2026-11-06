@@ -460,11 +460,23 @@ def executar(req):
 
             if atualizar:
                 print("\n=== ETAPA 5: atualizando ClickUp ===")
+                from clickup_conferencia import ARQ_TEMPO_DIVIDIDO
+                if os.path.exists(ARQ_TEMPO_DIVIDIDO):
+                    os.remove(ARQ_TEMPO_DIVIDIDO)   # só o desta conferência
                 headers = {"Authorization": get_clickup_token(), "Content-Type": "application/json"}
                 qtd, erros = atualizar_clickup(resultado, resultado.sankhya_df, headers)
                 if erros:
                     t.adicionar_arquivo("Erros do ClickUp (.json)", "erros_clickup.json")
                 msg = f"Relatório gerado. {qtd} tarefa(s) atualizada(s) no ClickUp, {len(erros)} erro(s)."
+                # 06/11/2026 (Fragoso): tempo da OS dividido entre tarefas gêmeas -- para conferir depois.
+                if os.path.exists(ARQ_TEMPO_DIVIDIDO):
+                    import shutil
+                    copia = os.path.join(PASTA_CLICKUP, f"Gemeas_tempo_dividido_{ini:%Y%m%d}_a_{fim:%Y%m%d}_{datetime.now():%H%M%S}.csv")
+                    shutil.copy2(ARQ_TEMPO_DIVIDIDO, copia)
+                    t.adicionar_arquivo("⚠ Gêmeas com tempo dividido - conferir (.csv)", copia)
+                    with open(copia, encoding="utf-8-sig") as f:
+                        n = max(sum(1 for _ in f) - 1, 0)
+                    msg += f" ⚠ {n} tarefa(s) gêmea(s) com o tempo da OS dividido: confira no arquivo abaixo."
             else:
                 print("\nCaixa 'Atualizar ClickUp' desmarcada.")
                 msg = "Relatório gerado (nada foi alterado no ClickUp)."

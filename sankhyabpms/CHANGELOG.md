@@ -8,6 +8,15 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.11.0 — 06/11/2026
+- Lançar ClickUp, para quem acessa só algumas pastas e listas: o Responsável lista as pessoas das
+  tarefas que a conta enxerga (antes vinha só o próprio nome) e a tela abre na hora, com as listas
+  guardadas no computador e atualizadas em segundo plano.
+- Conferência de OS: a tarefa-gêmea (mais de uma tarefa com a mesma OS) só vale na mesma FAP e com o
+  Período dentro do horário da OS; a TAG ID continua decidindo sozinha. O tempo da OS é dividido entre
+  as gêmeas pelo Período de cada uma e cada caso é sinalizado para conferir (aviso no X-Observações OS
+  e o arquivo "Gêmeas com tempo dividido" na tela).
+
 ## 1.10.0 — 05/11/2026
 - Aceite de OS: confere todas as FAPs ativas. Além da lista fixa, entram as listas abertas do
   ClickUp e os projetos Em Andamento no Experience (de 34 para 68 FAPs).
