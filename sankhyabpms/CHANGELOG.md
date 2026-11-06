@@ -8,6 +8,16 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.13.0 — 06/11/2026
+- Nova tela Chamados: acompanha os chamados do portal ajuda.sankhya.com.br (cola um ou vários links,
+  exclui quando quiser). Lê o andamento com o login Sankhya ID do navegador da Central, sem abrir abas
+  e só leitura: status igual ao do portal, assunto, última resposta e dias sem movimento. Sinais de
+  resposta nova, aguardando você, acompanhamento vencido e parado, com cores por status, parceiro em
+  etiqueta editável e adiamento com um clique. Leitura automática de hora em hora nos dias úteis (sem
+  feriados), aviso no topo das telas e e-mail só com o que é novo. Os chamados ficam só no computador.
+- Sync: listas sem número de FAP no nome ficam fora (também na contagem da tela).
+- Lançar ClickUp: ícone azul no atalho e no navegador, para não confundir com a Central (verde).
+
 ## 1.12.0 — 06/11/2026
 - Nova tela Organograma: pessoas da Sankhya por grupo e área (começa com os PO de Produtos), com
   demandas resumidas por área e busca por pessoa, área ou demanda. Os nomes ficam só no computador.

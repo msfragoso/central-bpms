@@ -13,9 +13,11 @@ leitura (DatasetSP.loadRecords), pelo contexto do navegador (mesmos cookies).
 O Playwright (API síncrona) só pode ser usado pela thread que o abriu, então
 tudo roda numa thread dedicada que recebe trabalhos por uma fila.
 """
+import html as html_mod
 import json
 import os
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -566,6 +568,124 @@ class _Om:
                 raise RuntimeError(f"O OM não confirmou ({servico}): {j.get('statusMessage') or j.get('statusMessageID') or str(j)[:300]}")
             return j
         return self._executar(fazer, timeout=180)
+
+    # 06/11/2026 (Fragoso): portal de chamados (ajuda.sankhya.com.br, Zendesk) com o mesmo login Sankhya ID.
+    PORTAL_CHAMADOS = "https://ajuda.sankhya.com.br"
+
+    def ler_chamado(self, numero):
+        """
+        Só leitura: status e últimas respostas de um chamado do portal, pela sessão do navegador da Central.
+        Se o portal pedir login, abre a página do chamado (o login Sankhya ID costuma entrar sozinho) e tenta de
+        novo uma vez. Devolve {"request": {...}, "comments": [...], "users": [...]} ou levanta RuntimeError.
+        """
+        numero = int(numero)
+
+        def api():
+            r1 = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/requests/{numero}.json", timeout=60000)
+            if r1.status != 200:
+                return None, r1.status
+            r2 = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/requests/{numero}/comments.json",
+                                       params={"sort_order": "desc", "per_page": "5", "include": "users"}, timeout=60000)
+            comentarios = json.loads(r2.text()) if r2.status == 200 else {}
+            req = json.loads(r1.text()).get("request") or {}
+            req["status_label"] = rotulo_status(req)
+            return {"request": req, "comments": comentarios.get("comments") or [],
+                    "users": comentarios.get("users") or []}, 200
+
+        def rotulo_status(req):
+            """06/11/2026 (Fragoso): o rótulo que o portal mostra (status personalizado, ex.: "resolvido - aguardando
+            validação do cliente"). Pela API de status personalizados; se não der, pela própria tela do chamado."""
+            cid = req.get("custom_status_id")
+            if cid:
+                try:
+                    r = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/custom_statuses/{cid}.json", timeout=30000)
+                    if r.status == 200:
+                        cs = json.loads(r.text()).get("custom_status") or {}
+                        rot = cs.get("end_user_label") or cs.get("agent_label")
+                        if rot:
+                            return rot
+                except Exception:
+                    pass
+            # 06/11/2026 (Fragoso: "fica abrindo várias telas"): lê o HTML da tela do chamado sem abrir aba,
+            # pela mesma sessão (cookies) do navegador da Central. O rótulo vem pronto no HTML do portal.
+            try:
+                r = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/hc/pt-br/requests/{numero}", timeout=60000)
+                if r.status == 200:
+                    m = re.search(r'class="[^"]*status-label[^"]*"[^>]*>\s*([^<]+?)\s*<', r.text())
+                    if m:
+                        return html_mod.unescape(m.group(1)).strip()
+            except Exception:
+                pass
+            return ""
+
+        def fazer():
+            self._abrir()
+            dados, status = api()
+            if dados is not None:
+                return dados
+            if status == 404:
+                raise RuntimeError("Chamado não encontrado no portal (ou sem acesso para este login).")
+            pagina = self._ctx.new_page()
+            try:
+                pagina.goto(f"{self.PORTAL_CHAMADOS}/hc/pt-br/requests/{numero}", wait_until="load", timeout=60000)
+                try:
+                    pagina.wait_for_url(f"{self.PORTAL_CHAMADOS}/hc/**", timeout=30000)
+                except Exception:
+                    pass
+                dados, status = api()
+                if dados is not None:
+                    pagina.close()
+                    return dados
+                # 06/11/2026 (Fragoso): o andamento se lê na própria tela do chamado depois do login no ID.
+                if "/hc/" in (pagina.url or "") and f"/requests/{numero}" in (pagina.url or ""):
+                    dados = self._ler_tela_chamado(pagina, numero)
+                    if dados:
+                        pagina.close()
+                        return dados
+            except Exception:
+                pass
+            raise RuntimeError("O portal de chamados pediu login. Entre com o Sankhya ID na janela do navegador da "
+                               "Central e clique em Atualizar de novo.")
+        return self._executar(fazer, timeout=180)
+
+    _JS_TELA_CHAMADO = r"""() => {
+        const t = (el) => (el ? (el.innerText || el.textContent || '').trim() : '');
+        const titulo = t(document.querySelector('h1'));
+        let status = '';
+        const rotulo = document.querySelector('[class*="status-label"], .request-status, [data-status]');
+        if (rotulo) status = t(rotulo);
+        if (!status) {
+          for (const dt of document.querySelectorAll('dt')) {
+            if (/status/i.test(t(dt))) { status = t(dt.nextElementSibling); break; }
+          }
+        }
+        const comentarios = [...document.querySelectorAll('.comment, li[id^="request_comment"], article.comment')].map((c) => ({
+          autor: t(c.querySelector('.comment-author, [class*="author"]')).split('\n')[0],
+          quando: (c.querySelector('time[datetime]') || {}).getAttribute ? c.querySelector('time[datetime]').getAttribute('datetime') : '',
+          texto: t(c.querySelector('.comment-body, [class*="comment-body"], .zd-comment')) || t(c),
+        })).filter((c) => c.texto);
+        return { titulo, status, comentarios };
+    }"""
+    _STATUS_TELA = {"novo": "new", "aberto": "open", "aguardando": "pending", "pendente": "pending", "em espera": "hold",
+                    "resolvido": "solved", "solucionado": "solved", "fechado": "closed", "encerrado": "closed"}
+
+    def _ler_tela_chamado(self, pagina, numero):
+        """Lê título, status e a última resposta da tela do chamado (quando a API do portal não responde)."""
+        try:
+            pagina.wait_for_selector("h1", timeout=20000)
+        except Exception:
+            return None
+        d = pagina.evaluate(self._JS_TELA_CHAMADO)
+        if not d or not d.get("titulo"):
+            return None
+        rotulo = (d.get("status") or "").strip().lower()
+        status = next((v for k, v in self._STATUS_TELA.items() if k in rotulo), rotulo)
+        comentarios = d.get("comentarios") or []
+        ult = max(comentarios, key=lambda c: c.get("quando") or "") if comentarios else None
+        return {"request": {"id": numero, "status": status, "subject": d["titulo"], "status_label": d.get("status") or "",
+                            "updated_at": (ult or {}).get("quando") or ""},
+                "comments": [{"author_id": 0, "created_at": ult.get("quando"), "plain_body": ult.get("texto")}] if ult else [],
+                "users": [{"id": 0, "name": (ult or {}).get("autor") or ""}]}
 
     def status(self):
         pronta = bool(self.sessao and self.sktk_consulta and self.sktk_consulta[0] == self.sessao["mgeSession"])

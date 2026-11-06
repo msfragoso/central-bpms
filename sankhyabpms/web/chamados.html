@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chamados</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .ch-novo { display: grid; grid-template-columns: 2fr 1fr 150px auto; gap: 8px; align-items: end; }
+  .ch-novo textarea { min-height: 40px; resize: vertical; }
+  @media (max-width: 760px) { .ch-novo { grid-template-columns: 1fr; } }
+  .ch-filtros { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 10px; align-items: center; }
+  .ch-filtro { border: 1px solid var(--linha); background: var(--card); color: var(--texto); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 13px; }
+  .ch-filtro b { margin-left: 4px; }
+  .ch-filtro.ativo { background: var(--local); color: #fff; border-color: var(--local); }
+  .ch-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  .ch-card { background: var(--card); border: 1px solid var(--linha); border-left: 5px solid var(--linha); border-radius: 10px; padding: 14px; box-shadow: var(--sombra); display: flex; flex-direction: column; gap: 8px; }
+  .ch-card.s-novidade { border-left-color: #2f6fed; }
+  .ch-card.s-aguardando_voce { border-left-color: var(--perigo); }
+  .ch-card.s-vencido { border-left-color: var(--aviso); }
+  .ch-card.encerrado { opacity: .65; }
+  .ch-topo { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .ch-num { font-weight: 800; font-size: 16px; }
+  .ch-titulo { font-weight: 800; font-size: 15px; color: var(--texto); }
+  .ch-meta { font-size: 12px; color: var(--suave); }
+  .ch-sinais { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ch-sinal { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: #fff; }
+  .ch-sinal.novidade { background: #2f6fed; } .ch-sinal.aguardando_voce { background: var(--perigo); }
+  .ch-sinal.vencido { background: var(--aviso); } .ch-sinal.parado { background: #6b7a72; }
+  .ch-etiquetas { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+  .ch-parceiro { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 6px; background: #0e7490; color: #fff; border: 1px solid #0e7490; white-space: nowrap; cursor: pointer; letter-spacing: .02em; text-transform: uppercase; }
+  .ch-parceiro.vazio { background: transparent; color: var(--suave); border: 1px dashed var(--suave); font-weight: 600; text-transform: none; }
+  .ch-parceiro-ed { font-size: 12px; min-height: 26px; padding: 2px 8px; max-width: 170px; }
+  .ch-status { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 6px; color: #fff; background: #2f6fed; white-space: nowrap; }
+  .ch-status.st-voce { background: #d92d20; } .ch-status.st-resolvido { background: #12805c; }
+  .ch-status.st-escalonado { background: #7a3fd1; } .ch-status.st-espera { background: #b54708; }
+  .ch-status.st-naolido { background: #6b7a72; }
+  .ch-meta b { color: var(--texto); }
+  .ch-proximo-marcado { border-color: var(--aviso) !important; font-weight: 700; }
+  .ch-resposta { border-left: 3px solid #2f6fed; color: var(--texto); background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; max-height: 110px; overflow: auto; }
+  .ch-linha { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .ch-linha input { max-width: 130px; min-height: 30px; padding: 4px 8px; }
+  .ch-nota { width: 100%; min-height: 34px; font-size: 13px; resize: vertical; }
+  .ch-erro { color: var(--perigo); font-size: 12px; }
+  .ch-vazio { text-align: center; color: var(--suave); padding: 30px; }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="chamados.titulo">Chamados</h1>
+      <p data-texto="chamados.subtitulo">Acompanhamento dos chamados do portal ajuda.sankhya.com.br</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="chamados"></span>
+  </div>
+  <p class="explicacao" data-texto="card.chamados.descricao">Cole os links dos chamados. A Central lê o andamento no portal com o seu login Sankhya ID (só leitura), de hora em hora nos dias úteis e pelo botão Atualizar, e avisa quando há resposta nova, quando o portal espera você ou quando passa a data de acompanhamento.</p>
+
+  <section class="card faixa">
+    <h2>Cadastrar chamados</h2>
+    <form class="ch-novo" id="form-novo">
+      <div class="campo"><label for="novo-texto">Links ou números (vários de uma vez)</label>
+        <textarea id="novo-texto" placeholder="https://ajuda.sankhya.com.br/hc/pt-br/requests/123456"></textarea></div>
+      <div class="campo"><label for="novo-parceiro">Parceiro / assunto (opcional)</label><input id="novo-parceiro"></div>
+      <div class="campo"><label for="novo-proximo">Próximo acompanhamento</label><input id="novo-proximo" placeholder="DD/MM/AAAA"></div>
+      <div class="campo"><button class="btn" type="submit">Adicionar</button></div>
+    </form>
+  </section>
+
+  <div class="ch-filtros" id="filtros"></div>
+  <div class="ch-linha" style="margin-bottom:12px">
+    <button class="btn" id="btn-atualizar" type="button">Atualizar andamento no portal</button>
+    <button class="btn secundario" id="btn-visto-todos" type="button">Marcar tudo como visto</button>
+    <span class="ajuda" id="ultima"></span>
+  </div>
+  <div id="tarefa"></div>
+  <section class="ch-lista" id="lista"></section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, esc, get, post, toast, confirmar, mascaraData, dataValida } = BPMS;
+  BPMS.montarTopo("chamados");
+  if (mascaraData) mascaraData($("#novo-proximo"));
+  let chamados = [], filtro = localStorage.getItem("bpms-chamados-filtro") || "abertos";
+  const ROT = { novidade: "Resposta nova", aguardando_voce: "Aguardando você", vencido: "Acompanhamento vencido", parado: "Parado" };
+  const FILTROS = [
+    ["atencao", "Pedem atenção", (c) => c.sinais.some((s) => s !== "parado") && !encerrado(c)],
+    ["novidade", "Resposta nova", (c) => c.sinais.includes("novidade")],
+    ["aguardando_voce", "Aguardando você", (c) => c.sinais.includes("aguardando_voce")],
+    ["vencido", "Vencidos", (c) => c.sinais.includes("vencido")],
+    ["parado", "Parados", (c) => c.sinais.includes("parado")],
+    ["abertos", "Em andamento", (c) => !encerrado(c)],
+    ["encerrados", "Resolvidos", (c) => encerrado(c)],
+    ["todos", "Todos", () => true],
+  ];
+  const encerrado = (c) => c.encerrado;
+  const somaDias = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString("pt-BR"); };
+
+  function desenharFiltros() {
+    $("#filtros").innerHTML = FILTROS.map(([id, rot, f]) =>
+      `<button class="ch-filtro ${id === filtro ? "ativo" : ""}" data-f="${id}" type="button">${rot}<b>${chamados.filter(f).length}</b></button>`).join("");
+    $("#filtros").querySelectorAll("button").forEach((b) => b.onclick = () => {
+      filtro = b.dataset.f; try { localStorage.setItem("bpms-chamados-filtro", filtro); } catch (e) { /* sem storage */ }
+      desenhar();
+    });
+  }
+
+  // 06/11/2026 (Fragoso): cor do status pelo significado (contraste)
+  function classeStatus(c) {
+    const t = BPMS.normalizar(c.status_txt || "");
+    if (!c.status) return "st-naolido";
+    if (c.sinais.includes("aguardando_voce")) return "st-voce";
+    if (/resolvid|fechad|solucionad/.test(t) || ["solved", "closed"].includes(c.status)) return "st-resolvido";
+    if (/escalonad|investiga|desenvolv|analise/.test(t)) return "st-escalonado";
+    if (/espera/.test(t) || c.status === "hold") return "st-espera";
+    return "";
+  }
+
+  function cartao(c) {
+    const r = c.ultima_resposta;
+    const dias = c.dias_sem_movimento;
+    return `<article class="ch-card ${c.sinais.map((s) => "s-" + s).join(" ")} ${encerrado(c) ? "encerrado" : ""}" data-n="${esc(c.numero)}">
+      <div class="ch-topo"><a class="ch-num" href="${esc(c.link)}" target="_blank" rel="noopener" data-abrir>#${esc(c.numero)}</a>
+        <span class="ch-etiquetas"><span class="ch-parceiro ${c.parceiro ? "" : "vazio"}" data-parceiro title="Clique para editar o parceiro">${esc(c.parceiro || "+ parceiro")}</span>
+        <span class="ch-status ${classeStatus(c)}">${esc(c.status_txt)}</span></span></div>
+      <div class="ch-titulo">${esc(c.titulo || c.titulo_portal || "(ainda não lido no portal)")}</div>
+      <div class="ch-meta">${c.atualizado_txt ? `última movimentação ${esc(c.atualizado_txt)}${dias != null ? ` (há ${dias} dia${dias === 1 ? "" : "s"})` : ""}` : "cadastrado em " + esc(c.criado)}</div>
+      ${c.sinais.length ? `<div class="ch-sinais">${c.sinais.map((s) => `<span class="ch-sinal ${s}">${ROT[s]}</span>`).join("")}</div>` : ""}
+      ${r ? `<div class="ch-meta">Última resposta: <b>${esc(r.autor || "?")}</b> em ${esc(r.quando)}</div><div class="ch-resposta">${esc(r.texto)}</div>` : ""}
+      ${c.erro ? `<div class="ch-erro">⚠ ${esc(c.erro)}</div>` : ""}
+      <div class="ch-linha"><span class="ch-meta">Próximo acompanhamento:</span>
+        <input data-proximo class="${c.proximo ? "ch-proximo-marcado" : ""}" value="${esc(c.proximo || "")}" placeholder="DD/MM/AAAA">
+        <button class="btn secundario pequeno" data-adiar="1" type="button">+1d</button>
+        <button class="btn secundario pequeno" data-adiar="3" type="button">+3d</button>
+        <button class="btn secundario pequeno" data-adiar="7" type="button">+7d</button></div>
+      <textarea class="ch-nota" data-nota placeholder="Anotação (ex.: cobrei o suporte em 06/11)">${esc(c.nota || "")}</textarea>
+      <div class="ch-linha">
+        ${c.sinais.includes("novidade") ? '<button class="btn pequeno" data-visto type="button">Vi a resposta</button>' : ""}
+        <button class="btn secundario pequeno" data-atualizar type="button">Atualizar</button>
+        <button class="btn secundario pequeno" data-excluir type="button">Excluir</button></div>
+    </article>`;
+  }
+
+  function desenhar() {
+    desenharFiltros();
+    const f = (FILTROS.find((x) => x[0] === filtro) || FILTROS[0])[2];
+    const lista = chamados.filter(f);
+    $("#lista").innerHTML = lista.map(cartao).join("") || `<div class="ch-vazio">${chamados.length ? "Nada neste filtro. 👍" : "Nenhum chamado cadastrado ainda."}</div>`;
+    $("#lista").querySelectorAll(".ch-card").forEach(ligar);
+  }
+
+  async function salvar(n, campos) {
+    try { const c = await post("/api/chamados/editar", { numero: n, ...campos }); Object.assign(chamados.find((x) => x.numero === n), c); desenhar(); }
+    catch (e) { toast(e.message, "erro"); }
+  }
+
+  function ligar(card) {
+    const n = card.dataset.n;
+    const prox = card.querySelector("[data-proximo]");
+    if (mascaraData) mascaraData(prox);
+    prox.onchange = () => { if (!prox.value || (dataValida ? dataValida(prox.value) : true)) salvar(n, { proximo: prox.value }); };
+    card.querySelectorAll("[data-adiar]").forEach((b) => b.onclick = () => salvar(n, { proximo: somaDias(+b.dataset.adiar) }));
+    card.querySelector("[data-nota]").onchange = (e) => salvar(n, { nota: e.target.value });
+    // 06/11/2026 (Fragoso): parceiro em etiqueta, como o status, editável com um clique
+    const etq = card.querySelector("[data-parceiro]");
+    etq.onclick = () => {
+      const atual = chamados.find((x) => x.numero === n)?.parceiro || "";
+      const inp = document.createElement("input");
+      inp.className = "ch-parceiro-ed"; inp.value = atual; inp.placeholder = "Parceiro"; inp.maxLength = 120;
+      etq.replaceWith(inp); inp.focus(); inp.select();
+      let feito = false;
+      const fim = (gravar) => { if (feito) return; feito = true; if (gravar && inp.value.trim() !== atual) salvar(n, { parceiro: inp.value.trim() }); else desenhar(); };
+      inp.onkeydown = (e) => { if (e.key === "Enter") fim(true); if (e.key === "Escape") fim(false); };
+      inp.onblur = () => fim(true);
+    };
+    const marcarVisto = async () => { try { await post("/api/chamados/visto", { numero: n }); await carregar(); } catch (e) { toast(e.message, "erro"); } };
+    card.querySelector("[data-abrir]").onclick = () => { if (chamados.find((x) => x.numero === n)?.sinais.includes("novidade")) setTimeout(marcarVisto, 500); };
+    card.querySelector("[data-visto]")?.addEventListener("click", marcarVisto);
+    card.querySelector("[data-atualizar]").onclick = () => atualizar(n);
+    card.querySelector("[data-excluir]").onclick = async () => {
+      if (!await confirmar("Excluir chamado", `Tirar o chamado <b>#${esc(n)}</b> da lista? Nada muda no portal.`, { botao: "Excluir", perigo: true })) return;
+      try { await post("/api/chamados/excluir", { numero: n, confirmar: true }); await carregar(); toast(`Chamado ${n} excluído da lista.`); }
+      catch (e) { toast(e.message, "erro"); }
+    };
+  }
+
+  async function carregar() {
+    const r = await get("/api/chamados");
+    chamados = r.chamados;
+    $("#ultima").textContent = r.ultima ? `Última leitura do portal: ${r.ultima}` : "";
+    desenhar();
+  }
+
+  async function atualizar(numero) {
+    try {
+      await BPMS.iniciar("/api/chamados/atualizar", numero ? { numero } : {}, $("#tarefa"), () => carregar());
+    } catch (e) { toast(e.message, "erro"); }
+  }
+
+  $("#form-novo").onsubmit = async (e) => {
+    e.preventDefault();
+    const texto = $("#novo-texto").value.trim();
+    if (!texto) return toast("Cole o link ou o número do chamado.", "erro");
+    try {
+      const r = await post("/api/chamados/adicionar", { texto, parceiro: $("#novo-parceiro").value, proximo: $("#novo-proximo").value });
+      $("#novo-texto").value = "";
+      toast(`${r.novos.length} chamado(s) adicionado(s)` + (r.ja_existiam.length ? ` · já estavam na lista: ${r.ja_existiam.join(", ")}` : ""));
+      filtro = "todos";
+      await carregar();
+      if (r.novos.length) atualizar();
+    } catch (e2) { toast(e2.message, "erro"); }
+  };
+  $("#btn-atualizar").onclick = () => atualizar();
+  $("#btn-visto-todos").onclick = async () => { try { await post("/api/chamados/visto", { todos: true }); await carregar(); } catch (e) { toast(e.message, "erro"); } };
+
+  carregar().catch((e) => {
+    $("#lista").innerHTML = `<div class="ch-vazio">${e.status === 404
+      ? "O serviço da Central ainda está na versão anterior. Rode o Reiniciar_Servico.bat e recarregue esta página (Ctrl+F5)."
+      : esc(e.message)}</div>`;
+    $("#form-novo").querySelector("button").disabled = true;
+  });
+})();
+</script>
+</body>
+</html>

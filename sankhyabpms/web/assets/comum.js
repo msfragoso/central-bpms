@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.12.0";
+  const VERSAO = "1.13.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -19,6 +19,7 @@ const BPMS = (() => {
     { id: "pedidos", href: "pedidos.html", rotulo: "Verificação de Pedidos" },
     { id: "credenciais", href: "credenciais.html", rotulo: "Credenciais" },
     { id: "organograma", href: "organograma.html", rotulo: "Organograma" },
+    { id: "chamados", href: "chamados.html", rotulo: "Chamados" },
   ];
 
   // 04/11/2026 (Fragoso): ícone de cada módulo, usado no menu do topo e nos cartões do Início
@@ -36,6 +37,7 @@ const BPMS = (() => {
     pedidos: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h4"/>',
     credenciais: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M13 10l2 2"/>',
     organograma: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>',
+    chamados: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
     inicio: '<path d="M3 11l9-8 9 8"/><path d="M5 9.5V21h14V9.5M10 21v-6h4v6"/>',
   };
   const icone = (id) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONES[id] || ""}</svg>`;
@@ -84,6 +86,20 @@ const BPMS = (() => {
 
   // ------------------------------------------------------------ aviso de senha expirada
   // 05/11/2026 (Fragoso): em toda tela, avisa quando o Experience recusou a senha do cofre.
+  // 06/11/2026 (Fragoso): aviso no topo quando algum chamado do portal pede atenção (tela Chamados).
+  async function verificarChamados(topo) {
+    let a;
+    try { a = await get("/api/chamados/aviso"); } catch (e) { return; }
+    const partes = [a.novidades && `${a.novidades} com resposta nova`, a.aguardando && `${a.aguardando} aguardando você`,
+                    a.vencidos && `${a.vencidos} com acompanhamento vencido`].filter(Boolean);
+    if (!partes.length || location.pathname.endsWith("chamados.html")) return;
+    const barra = document.createElement("div");
+    barra.className = "barra-credencial";
+    barra.setAttribute("role", "status");
+    barra.innerHTML = `<span>🔔 Chamados: ${esc(partes.join(" · "))}.</span> <a class="btn pequeno" href="chamados.html">Abrir Chamados</a>`;
+    topo.append(barra);
+  }
+
   async function verificarCredencial(topo) {
     let a;
     try { a = (await get("/api/credenciais/aviso")).aviso; } catch (e) { return; }
@@ -178,6 +194,7 @@ const BPMS = (() => {
     document.body.prepend(topo);
     verificarAtualizacao(topo);
     verificarCredencial(topo);
+    verificarChamados(topo);
     $("#botao-editar").onclick = () => (document.body.classList.contains("editando") ? null : editarTextos());
     aplicarTextos().then(aplicarOrdemMenu).then(ajustarMenu);
     prepararMenu(topo);

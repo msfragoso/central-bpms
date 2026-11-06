@@ -71,10 +71,12 @@ def _consultores():
 
 @rota("GET", "/api/sync/contar")
 def contar(req):
-    from clickup_sync.list_discovery import filtrar_listas_por_nome
+    from clickup_sync.list_discovery import extrair_fap_do_nome_lista, filtrar_listas_por_nome
     texto = (req.query.get("texto") or "").strip()
     todas = _todas_listas()
     listas = filtrar_listas_por_nome(todas, texto) if texto else todas
+    # 06/11/2026 (Fragoso): lista sem número de FAP fica fora do sync (o mesmo filtro está no main.py)
+    listas = [l for l in listas if extrair_fap_do_nome_lista(l.get("name") or "")]
     return 200, {"total": len(listas),
                  "listas": [f"{l.get('folder_name') or ''} / {l['name']}".strip(" /") for l in listas[:30]]}
 

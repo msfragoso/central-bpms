@@ -372,6 +372,39 @@ def escrever(destino, texto, bom=False):
         f.write(texto)
 
 
+AZUL_LANCAR = (29, 78, 216)
+
+
+def icones_azuis(pasta):
+    """
+    06/11/2026 (Fragoso): o Lançar ClickUp usa o "BP" em azul, para não confundir com a Central (verde).
+    O atalho da Área de Trabalho aponta para central.ico do pacote, então ele recebe o lancar.ico; as imagens
+    PNG (aba do navegador, app) são recoloridas do verde para o azul. Sem a biblioteca Pillow, ficam verdes.
+    """
+    ico = os.path.join(pasta, "lancar.ico")
+    if os.path.isfile(ico):
+        shutil.copy2(ico, os.path.join(pasta, "central.ico"))
+    try:
+        from PIL import Image
+    except ImportError:
+        print("Aviso: sem Pillow, as imagens PNG do Lançar ficam verdes.")
+        return
+    for nome in os.listdir(pasta):
+        if not nome.lower().endswith(".png"):
+            continue
+        caminho = os.path.join(pasta, nome)
+        im = Image.open(caminho).convert("RGBA")
+        px = im.load()
+        for y in range(im.height):
+            for x in range(im.width):
+                r, g, b, a = px[x, y]
+                if a == 0:
+                    continue
+                t = max(0.0, min(1.0, (255 - r) / 245))
+                px[x, y] = tuple(int(round(255 * (1 - t) + cor * t)) for cor in AZUL_LANCAR) + (a,)
+        im.save(caminho)
+
+
 def main():
     if os.path.exists(PACOTE):
         shutil.rmtree(PACOTE)
@@ -392,6 +425,7 @@ def main():
     for n in ("padrao.css", "login.js", "firebase-config.js"):
         copiar(os.path.join(web, "assets", n), os.path.join(c, "web", "assets", n))
     shutil.copytree(os.path.join(web, "assets", "icones"), os.path.join(c, "web", "assets", "icones"))
+    icones_azuis(os.path.join(c, "web", "assets", "icones"))
     with open(os.path.join(web, "assets", "comum.js"), encoding="utf-8") as f:
         comum = f.read()
     comum = re.sub(r"const TELAS = \[.*?\];",

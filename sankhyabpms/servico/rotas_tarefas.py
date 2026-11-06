@@ -24,6 +24,7 @@ _ARQUIVOS_MODULO = {
     "backlog": ["web/backlog.html", "servico/app_backlog.py"],
     "planilhas": ["web/planilhas.html", "servico/app_planilhas.py", "@conferencia_os/conferencia_planilhas.py"],
     "organograma": ["web/organograma.html", "servico/app_organograma.py"],
+    "chamados": ["web/chamados.html", "servico/app_chamados.py"],
 }
 _cache_atualizado = {"quando": 0, "dados": {}}
 
