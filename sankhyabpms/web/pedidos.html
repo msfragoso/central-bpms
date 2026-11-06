@@ -31,6 +31,9 @@
   tr.detalhe table { width: 100%; }
   .abrir-det { background: none; border: 0; color: var(--local); font: inherit; font-size: 13px; cursor: pointer; padding: 0; white-space: nowrap; }
   .log.curto { max-height: 180px; overflow: auto; }
+  .fontes { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 0 0 10px; color: var(--suave); font-size: 13px; }
+  .fonte { display: inline-flex; gap: 6px; align-items: center; padding: 2px 10px; border: 1px solid var(--linha); border-radius: 999px; background: var(--card); color: var(--texto); font-weight: 600; }
+  .fonte i { font-style: normal; color: var(--suave); font-weight: 400; }
   tr.nao-medicao > td:first-child { box-shadow: inset 4px 0 0 var(--aviso); }
   .selo-tipo { display: inline-block; margin-top: 4px; padding: 1px 7px; border: 1px solid var(--aviso); border-radius: 999px; background: var(--aviso-claro); color: var(--aviso); font-size: 11px; font-weight: 700; white-space: nowrap; }
   .tipo-ok { color: var(--suave); font-size: 11px; margin-top: 2px; }
@@ -57,7 +60,7 @@
       <div class="campo c6"><div class="acoes" style="margin:0;padding-top:22px">
         <button class="btn secundario" id="btn-semana" type="button">Semana atual</button>
         <button class="btn" id="btn-verificar" type="button">Verificar pedidos</button>
-        <button class="btn secundario" id="btn-om" type="button">Conectar ao OM</button>
+        <button class="btn secundario" id="btn-om" type="button" title="O OM só é usado para ajustar a quantidade de horas dos pedidos Medição. A verificação não precisa dele.">🔧 Conectar ao OM para ajustar horas</button>
         <span class="ajuda" id="om-status"></span>
       </div></div>
     </div>
@@ -67,13 +70,18 @@
 
   <div id="painel" class="oculto">
     <p class="ajuda" id="quando"></p>
+    <div class="fontes" role="note">De onde vêm os dados:
+      <span class="fonte" title="Pedido, natureza, tipo de operação, negociado, consumido e saldo">📄 Pedidos e saldos <i>· Experience</i></span>
+      <span class="fonte" title="Tarefas da semana, período e apontamento">✅ Tarefas <i>· ClickUp</i></span>
+      <span class="fonte" title="Usado só no ajustar no OM">🔧 Ajuste de horas <i>· Sankhya-OM</i></span>
+    </div>
     <div class="kpis" id="kpis"></div>
     <div class="faixa-manual oculto" id="faixa-manual" role="status"></div>
     <div class="chips" id="chips"></div>
     <section class="card">
       <div class="tabela-caixa">
         <table>
-          <thead><tr><th>Situação</th><th>Parceiro</th><th>FAP</th><th>Pedido</th><th class="num">Negociado</th><th class="num">Consumido</th><th class="num">Saldo</th><th class="num">Tarefas no período</th><th class="num">Sobra</th><th></th></tr></thead>
+          <thead><tr><th>Situação</th><th>Parceiro</th><th>FAP</th><th title="Dados do Experience">Pedido <small>(Experience)</small></th><th class="num" title="Dados do Experience">Negociado</th><th class="num" title="Dados do Experience">Consumido</th><th class="num">Saldo</th><th class="num">Tarefas no período</th><th class="num">Sobra</th><th></th></tr></thead>
           <tbody id="corpo"></tbody>
         </table>
       </div>
@@ -91,6 +99,18 @@
   const CLASSE = { "FALTAM HORAS": "falta", "SEM PEDIDO": "sem", "SALDO BAIXO": "baixo", "CONFERIR": "conferir", "OK": "ok" };
   const ALERTAS = ["FALTAM HORAS", "SEM PEDIDO", "SALDO BAIXO"];
   let dados = null, filtro = "alertas", semana = {};
+  // Tipo de operação do pedido: 104 Medição; Empreito e Banco de Horas só têm ajuste manual.
+  const tipoDoPedido = (p) => {
+    const t = String(p.tipo || "").toUpperCase();
+    if (p.medicao || t.startsWith("104")) return "medicao";
+    if (t.includes("EMPREITO")) return "empreito";
+    if (t.includes("BANCO")) return "banco";
+    return "outro";
+  };
+  const tipoDaLinha = (r) => {
+    const tipos = [...new Set((r.pedidos || []).map(tipoDoPedido))];
+    return tipos.length === 1 ? tipos[0] : "outro";
+  };
   const hhmm = (m) => {
     if (m === null || m === undefined) return "—";
     const a = Math.abs(m);
@@ -110,9 +130,16 @@
     faixa.classList.toggle("oculto", !manuais.length);
     faixa.innerHTML = manuais.length ? `<span aria-hidden="true">🔒</span><div><b>${manuais.length} pedido(s) em alerta não são Medição.</b> A Central não ajusta esses pedidos, o ajuste é manual:<ul>`
       + manuais.map((r) => `<li>${esc(r.parceiro)} (FAP ${esc(r.fap)}): pedido ${(r.pedidos || []).map((p) => `${esc(p.rotulo)}, ${esc(p.tipo)}`).join("; ")}. Sobra ${hhmm(r.sobra)}.</li>`).join("") + "</ul></div>" : "";
-    const opcoes = [["alertas", `Em alerta (${dados.alertas})`], ["naomedicao", `🔒 Não é Medição (${naoMedicao.length})`], ["todos", `Todos (${linhas.length})`]];
+    // 05/11/2026 (Fragoso): filtros por tipo de operação do pedido.
+    const porTipo = { medicao: linhas.filter((r) => tipoDaLinha(r) === "medicao"), empreito: linhas.filter((r) => tipoDaLinha(r) === "empreito"),
+      banco: linhas.filter((r) => tipoDaLinha(r) === "banco"), outro: linhas.filter((r) => tipoDaLinha(r) === "outro") };
+    const opcoes = [["alertas", `Em alerta (${dados.alertas})`], ["medicao", `Medição (${porTipo.medicao.length})`],
+      ["empreito", `🔒 Empreito (${porTipo.empreito.length})`], ["banco", `🔒 Banco de Horas (${porTipo.banco.length})`]]
+      .concat(porTipo.outro.length ? [["outro", `🔒 Outros tipos (${porTipo.outro.length})`]] : [])
+      .concat([["todos", `Todos (${linhas.length})`]]);
+    if (!opcoes.some(([v]) => v === filtro)) filtro = "todos";
     $("#chips").innerHTML = opcoes.map(([v, r]) => `<button class="chip ${filtro === v ? "ativo" : ""}" data-f="${v}" type="button">${esc(r)}</button>`).join("");
-    const vis = filtro === "todos" ? linhas : filtro === "naomedicao" ? naoMedicao : linhas.filter((r) => ALERTAS.includes(r.situacao));
+    const vis = filtro === "todos" ? linhas : filtro === "alertas" ? linhas.filter((r) => ALERTAS.includes(r.situacao)) : porTipo[filtro];
     $("#corpo").innerHTML = vis.map((r, i) => `<tr class="${r.medicao === false ? "nao-medicao" : ""}">
         <td><span class="sit ${CLASSE[r.situacao] || "conferir"}">${esc(r.situacao)}</span></td>
         <td>${esc(r.parceiro)}${r.observacao ? `<div class="obs">${esc(r.observacao)}</div>` : ""}</td>
@@ -186,8 +213,9 @@
   async function statusOm() {
     try {
       const s = await get("/api/om/status");
-      $("#om-status").textContent = s.estado === "conectado" ? "OM conectado" : s.estado === "aguardando_login" ? "aguardando seu login no OM" : "OM não conectado";
-      $("#btn-om").textContent = s.estado !== "conectado" ? "Conectar ao OM" : s.janela_oculta ? "Mostrar janela do OM" : "Ocultar janela do OM";
+      $("#om-status").textContent = s.estado === "conectado" ? "OM conectado: pronto para ajustar horas"
+        : s.estado === "aguardando_login" ? "entrando no OM…" : "Só para ajustar horas. Conecta sozinho ao clicar em ajustar no OM.";
+      $("#btn-om").textContent = s.estado !== "conectado" ? "🔧 Conectar ao OM para ajustar horas" : s.janela_oculta ? "Mostrar janela do OM" : "Ocultar janela do OM";
       $("#btn-om").dataset.acao = s.estado === "conectado" && !s.janela_oculta ? "ocultar" : "conectar";
     } catch (e) { /* serviço fora do ar */ }
   }

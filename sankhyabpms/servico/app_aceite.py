@@ -137,8 +137,8 @@ def conferir(req):
 
     def trabalho(t):
         core = _core()
-        faps = core.universo_de_faps(faps_txt or None)
         token = _login(core, t, novo=True)
+        faps = core.universo_de_faps(faps_txt or None, token)   # 05/11/2026: inclui os projetos ativos do Experience
         t.log(f"Período: {periodo[0]:%d/%m/%Y} a {periodo[1]:%d/%m/%Y}")
         res = core.conferir_todas(token, faps, periodo, t.log)
         t.log("Buscando os executantes das OS (só leitura)...")

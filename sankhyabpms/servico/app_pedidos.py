@@ -230,7 +230,8 @@ def _enviar_email(casos, de, ate):
              "<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse;font-family:Segoe UI,Arial,sans-serif;font-size:13px'>"
              "<tr style='background:#e5f3ec'><th>Situação</th><th>Parceiro</th><th>FAP</th><th>Pedido</th><th>Tipo de operação</th><th>Saldo</th>"
              f"<th>Tarefas</th><th>Sobra</th><th>Observação</th></tr>{linhas}</table>"
-             "<p style='color:#5b6b63;font-size:12px'>Aviso automático da Central BP-MS. Cada alerta é avisado uma vez na "
+             "<p style='color:#5b6b63;font-size:12px'>Pedidos, tipo de operação e saldos: Experience. Tarefas: ClickUp.<br>"
+             "Aviso automático da Central BP-MS. Cada alerta é avisado uma vez na "
              f"semana, a menos que piore ({datetime.now():%d/%m/%Y %H:%M}).</p>")
     msg = MIMEMultipart("alternative")
     msg["From"] = f"Central BP-MS <{email}>"

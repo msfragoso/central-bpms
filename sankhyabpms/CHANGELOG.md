@@ -8,6 +8,13 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.10.0 — 05/11/2026
+- Aceite de OS: confere todas as FAPs ativas. Além da lista fixa, entram as listas abertas do
+  ClickUp e os projetos Em Andamento no Experience (de 34 para 68 FAPs).
+- Verificação de Pedidos: filtros Em alerta, Medição, Empreito, Banco de Horas e Todos; a tela e
+  o e-mail mostram de onde vem cada dado (pedidos e saldos do Experience, tarefas do ClickUp); o
+  botão do OM deixa claro que serve só para ajustar horas.
+
 ## 1.9.0 — 05/11/2026
 - Sankhya-OM: quando a Central precisa do OM, ela abre a janela, entra com o login do cofre e
   continua sozinha. Faz uma tentativa só e para se o OM pedir qualquer outra coisa ou recusar.
