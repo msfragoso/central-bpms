@@ -29,6 +29,7 @@ URL_OM = "https://skw.sankhya.com.br/mge/"
 SERVICO = "https://skw.sankhya.com.br/mge/service.sbr"
 PERFIL = dados_arquivo("om_perfil")
 ARQ_LOGIN_PARADO = "om_login_parado.json"
+ESPERA_TELA_LOGIN_MS = 30000
 # 05/11/2026: a página pede ao Chrome uma credencial salva, e o popup "Fazer login como" prende o login
 # (é janela do navegador, a automação não alcança). Aqui o Chrome responde "nenhuma" e a página segue.
 SEM_POPUP_DE_LOGIN = """
@@ -381,10 +382,19 @@ class _Om:
             else:
                 self._janela("normal")   # já logado: o botão mostra a janela oculta
             return True
-        return self._executar(abrir)
+        return self._executar(abrir, timeout=200)   # 09/11/2026: abertura + até 60s da tela de login + 30s do login
+
+    def _log_login(self, texto):
+        """Rastro do login automático em dados/om_login.log (nunca usuário nem senha)."""
+        try:
+            with open(dados_arquivo("om_login.log"), "a", encoding="utf-8") as f:
+                f.write(time.strftime("%d/%m/%Y %H:%M:%S") + " " + texto + "\n")
+        except OSError:
+            pass
 
     def _parar_login(self, motivo):
         """Uma tentativa só: repetir login recusado pode bloquear a conta. Volta a tentar depois de gravar de novo."""
+        self._log_login(f"parado: {motivo}")
         gravar_json_dados(ARQ_LOGIN_PARADO, {"motivo": motivo, "quando": time.strftime("%d/%m/%Y %H:%M")})
         self.mensagem = f"Login automático parado: {motivo} Continue na janela do Sankhya-OM."
 
@@ -395,6 +405,7 @@ class _Om:
         na hora, com a janela aberta, sem tentar de novo. Nunca registra a senha.
         """
         if ler_json_dados(ARQ_LOGIN_PARADO):
+            self._log_login("não tentou: login automático parado desde a última recusa")
             return
         try:
             cred = credenciais_om()
@@ -403,16 +414,22 @@ class _Om:
         if not cred:
             return
         try:
-            campo_usuario = pagina.locator("input#user")
-            campo_senha = pagina.locator("input[type=password]").first
+            campo_usuario = pagina.locator("input#user:visible")
+            campo_senha = pagina.locator("input[type=password]:visible").first
+            # Só o botão "Prosseguir" do formulário: nunca o "Entrar com Sankhya Pass" nem os das telas de código,
+            # que têm outra estrutura (account-button) e continuam sendo com o usuário.
+            botao_prosseguir = pagina.locator("button[type=submit]:visible", has_text="Prosseguir").first
             try:
-                campo_usuario.or_(campo_senha).first.wait_for(state="visible", timeout=15000)
+                # 09/11/2026 (Fragoso, "Prosseguir" sem clique): na tela de senha existe um input#user ESCONDIDO (para o
+                # gerenciador de senhas); sem o :visible, a espera travava nele e o login nunca seguia.
+                campo_usuario.or_(campo_senha).first.wait_for(state="visible", timeout=ESPERA_TELA_LOGIN_MS)
             except Exception:
+                self._log_login(f"tela de login não apareceu em {ESPERA_TELA_LOGIN_MS // 1000}s (url: {(pagina.url or '')[:80]})")
                 return   # sem tela de login: já está logado ou a página mudou; segue pelo fluxo normal
             self.mensagem = "Entrando no Sankhya-OM com o usuário do cofre..."
             if campo_usuario.is_visible():
                 campo_usuario.fill(cred[0])
-                pagina.locator("button[type=submit]:visible").first.click()
+                botao_prosseguir.click()
                 try:
                     campo_senha.wait_for(state="visible", timeout=15000)
                 except Exception:
@@ -426,7 +443,8 @@ class _Om:
             if outros:
                 return self._parar_login("o OM pediu mais um dado junto com a senha.")
             campo_senha.fill(cred[1])
-            pagina.locator("button[type=submit]:visible").first.click()
+            botao_prosseguir.click()
+            self._log_login("senha preenchida e Prosseguir clicado")
             limite = time.time() + 30
             while time.time() < limite and not self.sessao:
                 pagina.wait_for_timeout(500)
@@ -435,7 +453,8 @@ class _Om:
             if not self.sessao:
                 return self._parar_login("o login não terminou. Pode ser senha recusada, código ou troca de senha.")
             self.mensagem = "Conectado ao Sankhya-OM."
-        except Exception:
+        except Exception as e:
+            self._log_login(f"erro no login automático: {e.__class__.__name__}")
             self._parar_login("a página do OM não seguiu o caminho esperado.")
 
     def ocultar(self):
@@ -581,16 +600,29 @@ class _Om:
         numero = int(numero)
 
         def api():
-            r1 = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/requests/{numero}.json", timeout=60000)
+            r1 = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/requests/{numero}.json",
+                                       params={"include": "users"}, timeout=60000)
             if r1.status != 200:
                 return None, r1.status
             r2 = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/requests/{numero}/comments.json",
                                        params={"sort_order": "desc", "per_page": "5", "include": "users"}, timeout=60000)
             comentarios = json.loads(r2.text()) if r2.status == 200 else {}
-            req = json.loads(r1.text()).get("request") or {}
+            corpo1 = json.loads(r1.text())
+            req = corpo1.get("request") or {}
             req["status_label"] = rotulo_status(req)
-            return {"request": req, "comments": comentarios.get("comments") or [],
-                    "users": comentarios.get("users") or []}, 200
+            # 06/11/2026 (Fragoso): quem é quem no chamado (solicitante, atribuído, você) para distinguir quem respondeu
+            usuarios = {u.get("id"): u for u in (corpo1.get("users") or []) + (comentarios.get("users") or []) if u.get("id")}
+            return {"request": req, "comments": comentarios.get("comments") or [], "users": list(usuarios.values()),
+                    "eu": eu_no_portal()}, 200
+
+        def eu_no_portal():
+            if getattr(self, "_eu_portal", None) is None:
+                try:
+                    r = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/users/me.json", timeout=30000)
+                    self._eu_portal = (json.loads(r.text()).get("user") or {}).get("id") if r.status == 200 else None
+                except Exception:
+                    self._eu_portal = None
+            return self._eu_portal
 
         def rotulo_status(req):
             """06/11/2026 (Fragoso): o rótulo que o portal mostra (status personalizado, ex.: "resolvido - aguardando

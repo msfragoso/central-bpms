@@ -8,6 +8,12 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.13.1 — 09/11/2026
+- Sankhya-OM: o login automático agora preenche a senha e clica em Prosseguir sozinho, também na
+  tela que já lembra o usuário. Cada tentativa fica registrada, sem usuário nem senha.
+- Chamados: mostra o solicitante, o atribuído e as 3 últimas mensagens, com uma cor para cada papel
+  (Atendente, Suporte, Solicitante, Você). O aviso de resposta nova diz de quem é.
+
 ## 1.13.0 — 06/11/2026
 - Nova tela Chamados: acompanha os chamados do portal ajuda.sankhya.com.br (cola um ou vários links,
   exclui quando quiser). Lê o andamento com o login Sankhya ID do navegador da Central, sem abrir abas

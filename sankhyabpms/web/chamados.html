@@ -42,6 +42,15 @@
   .ch-status.st-escalonado { background: #7a3fd1; } .ch-status.st-espera { background: #b54708; }
   .ch-status.st-naolido { background: #6b7a72; }
   .ch-meta b { color: var(--texto); }
+  .ch-atores { font-size: 12px; color: var(--suave); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .ch-papel { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; color: #fff; white-space: nowrap; }
+  .p-atribuido { background: #7a3fd1; } .p-suporte { background: #2f6fed; } .p-solicitante { background: #0e7490; }
+  .p-voce { background: #6b7a72; } .p-outro { background: #b54708; }
+  .ch-msg { border-left: 3px solid var(--linha); padding: 4px 0 4px 8px; margin: 4px 0; }
+  .ch-msg.p-borda-atribuido { border-left-color: #7a3fd1; } .ch-msg.p-borda-suporte { border-left-color: #2f6fed; }
+  .ch-msg.p-borda-solicitante { border-left-color: #0e7490; } .ch-msg.p-borda-voce { border-left-color: #6b7a72; } .ch-msg.p-borda-outro { border-left-color: #b54708; }
+  .ch-msg .ch-meta { margin-bottom: 2px; }
+  .ch-msg.antiga { opacity: .75; }
   .ch-proximo-marcado { border-color: var(--aviso) !important; font-weight: 700; }
   .ch-resposta { border-left: 3px solid #2f6fed; color: var(--texto); background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; max-height: 110px; overflow: auto; }
   .ch-linha { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -89,6 +98,7 @@
   BPMS.montarTopo("chamados");
   if (mascaraData) mascaraData($("#novo-proximo"));
   let chamados = [], filtro = localStorage.getItem("bpms-chamados-filtro") || "abertos";
+  const PAPEL = { atribuido: "Atendente", suporte: "Suporte", solicitante: "Solicitante", voce: "Você", outro: "Participante" };
   const ROT = { novidade: "Resposta nova", aguardando_voce: "Aguardando você", vencido: "Acompanhamento vencido", parado: "Parado" };
   const FILTROS = [
     ["atencao", "Pedem atenção", (c) => c.sinais.some((s) => s !== "parado") && !encerrado(c)],
@@ -132,8 +142,11 @@
         <span class="ch-status ${classeStatus(c)}">${esc(c.status_txt)}</span></span></div>
       <div class="ch-titulo">${esc(c.titulo || c.titulo_portal || "(ainda não lido no portal)")}</div>
       <div class="ch-meta">${c.atualizado_txt ? `última movimentação ${esc(c.atualizado_txt)}${dias != null ? ` (há ${dias} dia${dias === 1 ? "" : "s"})` : ""}` : "cadastrado em " + esc(c.criado)}</div>
-      ${c.sinais.length ? `<div class="ch-sinais">${c.sinais.map((s) => `<span class="ch-sinal ${s}">${ROT[s]}</span>`).join("")}</div>` : ""}
-      ${r ? `<div class="ch-meta">Última resposta: <b>${esc(r.autor || "?")}</b> em ${esc(r.quando)}</div><div class="ch-resposta">${esc(r.texto)}</div>` : ""}
+      ${c.sinais.length ? `<div class="ch-sinais">${c.sinais.map((s) => `<span class="ch-sinal ${s}">${ROT[s]}${s === "novidade" && c.ultima_resposta?.papel ? " · " + (PAPEL[c.ultima_resposta.papel] || "") : ""}</span>`).join("")}</div>` : ""}
+      ${(c.solicitante || c.atribuido) ? `<div class="ch-atores">${c.solicitante ? `<span><span class="ch-papel p-solicitante">Solicitante</span> ${esc(c.solicitante)}</span>` : ""}${c.atribuido ? `<span><span class="ch-papel p-atribuido">Atribuído a</span> ${esc(c.atribuido)}</span>` : ""}</div>` : ""}
+      ${(c.ultimas || (r ? [r] : [])).map((m, i) => `<div class="ch-msg p-borda-${esc(m.papel || "outro")} ${i ? "antiga" : ""}">
+        <div class="ch-meta">${i ? "" : "Última: "}<span class="ch-papel p-${esc(m.papel || "outro")}">${esc(PAPEL[m.papel] || "Participante")}</span> <b>${esc(m.autor || "?")}</b> · ${esc(m.quando)}</div>
+        <div class="${i ? "ch-meta" : "ch-resposta"}">${esc(i ? (m.texto || "").slice(0, 140) + ((m.texto || "").length > 140 ? "…" : "") : m.texto)}</div></div>`).join("")}
       ${c.erro ? `<div class="ch-erro">⚠ ${esc(c.erro)}</div>` : ""}
       <div class="ch-linha"><span class="ch-meta">Próximo acompanhamento:</span>
         <input data-proximo class="${c.proximo ? "ch-proximo-marcado" : ""}" value="${esc(c.proximo || "")}" placeholder="DD/MM/AAAA">

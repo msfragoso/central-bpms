@@ -32,6 +32,7 @@ LIMITE_TEXTO = 400
 STATUS = {"new": "Novo", "open": "Aberto", "pending": "Aguardando você", "hold": "Em espera",
           "solved": "Resolvido", "closed": "Fechado"}
 _trava = threading.Lock()
+PAPEIS = {"atribuido": "Atendente", "suporte": "Suporte", "solicitante": "Solicitante", "voce": "Você", "outro": "Participante"}
 
 
 def _ler():
@@ -193,12 +194,32 @@ def _resumo_portal(c, dados):
     c["titulo_portal"] = _texto(r.get("subject"), 160)
     c["atualizado_portal"] = r.get("updated_at") or c.get("atualizado_portal") or ""
     c["criado_portal"] = r.get("created_at") or ""
-    ult = (dados.get("comments") or [None])[0]
-    if ult:
-        corpo = ult.get("plain_body") or re.sub(r"<[^>]+>", " ", ult.get("html_body") or ult.get("body") or "")
-        q = _quando(ult.get("created_at"))
-        c["ultima_resposta"] = {"autor": usuarios.get(ult.get("author_id"), ""), "quando": q.strftime("%d/%m/%Y %H:%M") if q else "",
-                                "texto": _texto(html.unescape(corpo), LIMITE_TEXTO)}
+    # 06/11/2026 (Fragoso): distinguir quem se manifestou -- solicitante, atendente atribuído, você ou outro do suporte
+    agentes = {u.get("id") for u in dados.get("users") or [] if u.get("agent") or u.get("role") in ("agent", "admin")}
+    eu = dados.get("eu")
+    c["solicitante"] = usuarios.get(r.get("requester_id")) or c.get("solicitante", "")
+    c["atribuido"] = usuarios.get(r.get("assignee_id")) or c.get("atribuido", "")
+
+    def papel(autor_id):
+        if eu and autor_id == eu:
+            return "voce"
+        if autor_id and autor_id == r.get("assignee_id"):
+            return "atribuido"
+        if autor_id and autor_id == r.get("requester_id"):
+            return "solicitante"
+        if autor_id in agentes:
+            return "suporte"
+        return "outro"
+
+    ultimas = []
+    for com in (dados.get("comments") or [])[:3]:
+        corpo = com.get("plain_body") or re.sub(r"<[^>]+>", " ", com.get("html_body") or com.get("body") or "")
+        q = _quando(com.get("created_at"))
+        ultimas.append({"autor": usuarios.get(com.get("author_id"), ""), "papel": papel(com.get("author_id")),
+                        "quando": q.strftime("%d/%m/%Y %H:%M") if q else "", "texto": _texto(html.unescape(corpo), LIMITE_TEXTO)})
+    if ultimas:
+        c["ultima_resposta"] = ultimas[0]
+        c["ultimas"] = ultimas
     c["erro"] = ""
     c["ultima_leitura"] = datetime.now().strftime("%d/%m/%Y %H:%M")
 
@@ -281,7 +302,8 @@ def _avisar_por_email(t):
     linhas = "".join(
         f"<tr><td><a href='{e(c['link'])}'>{e(c['numero'])}</a></td><td>{e(c.get('titulo') or '')}</td><td>{e(c.get('parceiro') or '')}</td>"
         f"<td>{e(c['status_txt'])}</td><td><b>{e(', '.join(rotulos[s] for s in c['sinais'] if s in rotulos))}</b></td>"
-        f"<td>{e((c.get('ultima_resposta') or {}).get('texto', '')[:200])}</td></tr>" for c in casos)
+        f"<td>{e(PAPEIS.get((c.get('ultima_resposta') or {}).get('papel'), ''))} {e((c.get('ultima_resposta') or {}).get('autor', ''))}: "
+        f"{e((c.get('ultima_resposta') or {}).get('texto', '')[:200])}</td></tr>" for c in casos)
     corpo = ("<p>Chamados que pedem sua atenção hoje:</p><table border='1' cellpadding='6' cellspacing='0' "
              "style='border-collapse:collapse;font-family:Segoe UI,Arial,sans-serif;font-size:13px'>"
              "<tr style='background:#e5f3ec'><th>Chamado</th><th>Assunto</th><th>Parceiro</th><th>Status</th><th>Atenção</th>"
