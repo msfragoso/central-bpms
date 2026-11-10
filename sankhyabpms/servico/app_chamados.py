@@ -68,7 +68,10 @@ AGUARDANDO_VOCE = re.compile(r"aguardando.*(cliente|voc[eê]|sua|seu)", re.I)
 
 def _aguardando_voce(c):
     """Zendesk "pending" ou rótulo do portal pedindo ação do cliente (ex.: "resolvido - aguardando validação do cliente")."""
-    return c.get("status") == "pending" or bool(AGUARDANDO_VOCE.search(c.get("status_label") or ""))
+    # 09/11/2026: com o rótulo do portal, vale o rótulo (ex.: "Conexão Agendada" é pending no Zendesk, mas não pede você)
+    if c.get("status_label"):
+        return bool(AGUARDANDO_VOCE.search(c["status_label"]))
+    return c.get("status") == "pending"
 
 
 def _encerrado(c):
@@ -189,7 +192,22 @@ def _resumo_portal(c, dados):
     r = dados.get("request") or {}
     usuarios = {u.get("id"): u.get("name") or "" for u in dados.get("users") or []}
     c["status"] = r.get("status") or c.get("status") or ""
-    c["status_label"] = _texto(r.get("status_label"), 120) or c.get("status_label", "")
+    # 09/11/2026: sem guardar rótulo antigo: o que não foi lido agora não fica preso no cartão
+    c["status_label"] = _texto(r.get("status_label"), 120)
+    c["etapa"] = _texto(r.get("etapa"), 120)
+    # 10/11/2026 (Fragoso): Status Resolvido, com aviso por e-mail quando o valor muda. Cartão que ainda não tinha o
+    # campo (1ª leitura depois da mudança) só registra o valor, sem aviso.
+    c["numero_os"] = _texto(r.get("numero_os"), 40)
+    data_exec = _texto(r.get("data_execucao"), 40)
+    try:  # campo de data do portal vem como AAAA-MM-DD
+        data_exec = datetime.strptime(data_exec[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        pass
+    c["data_execucao"] = data_exec
+    anterior = c.get("status_resolvido")
+    c["status_resolvido"] = _texto(r.get("status_resolvido"), 120)
+    if anterior is not None and c["status_resolvido"] and c["status_resolvido"] != anterior:
+        c["status_resolvido_mudou"] = {"de": anterior, "para": c["status_resolvido"], "quando": datetime.now().strftime("%d/%m/%Y %H:%M")}
     c["titulo"] = c.get("titulo") or _texto(r.get("subject"), 160)
     c["titulo_portal"] = _texto(r.get("subject"), 160)
     c["atualizado_portal"] = r.get("updated_at") or c.get("atualizado_portal") or ""
@@ -228,7 +246,8 @@ def iniciar_atualizacao(origem="manual", numeros=None):
     def trabalho(t):
         from om_sessao import OM
         lista = _ler()
-        alvos = [c for c in lista if (not numeros or c["numero"] in numeros) and c.get("status") != "closed"]
+        # 10/11/2026: chamado fechado é lido mais uma vez só para buscar os campos novos (Status Resolvido e outros)
+        alvos = [c for c in lista if (not numeros or c["numero"] in numeros) and (c.get("status") != "closed" or "status_resolvido" not in c)]
         if not alvos:
             return {"mensagem": "Nenhum chamado para atualizar."}
         t.log(f"Lendo {len(alvos)} chamado(s) no portal ajuda.sankhya.com.br (só leitura)...")
@@ -257,7 +276,7 @@ def iniciar_atualizacao(origem="manual", numeros=None):
         gravar_json_dados(ARQ_AGENDA, {**(ler_json_dados(ARQ_AGENDA, {}) or {}),
                                        "ultima_leitura": datetime.now().strftime("%d/%m/%Y %H:%M"),
                                        "ultima_auto": time.time()})
-        email = _avisar_por_email(t) if origem == "auto" else ""
+        email = _avisar_por_email(t, so_resolvido=origem != "auto")
         marcar_uso("chamados")
         return {"mensagem": f"{len(lidos)} chamado(s) atualizado(s)" + (f", {len(erros)} com erro" if erros else "") + "."
                             + (f" {email}" if email else "")}
@@ -271,7 +290,8 @@ def atualizar(req):
 
 
 # ---------------------------------------------------------------- e-mail e leitura automática de hora em hora
-def _avisar_por_email(t):
+def _avisar_por_email(t, so_resolvido=False):
+    """so_resolvido (10/11/2026, Fragoso): no "Atualizar" manual, o e-mail sai só para mudança do Status Resolvido."""
     import configparser
     import smtplib
     from email.mime.text import MIMEText
@@ -284,12 +304,16 @@ def _avisar_por_email(t):
     for c in (_com_sinais(c) for c in _ler()):
         novas = [f"{c['numero']}|{s}|{c.get('atualizado_portal') or ''}|{c.get('proximo') or ''}"
                  for s in c["sinais"] if s in ("novidade", "aguardando_voce", "vencido")]
-        novas = [k for k in novas if k not in avisados]
+        mudou = c.get("status_resolvido_mudou") or {}
+        if mudou:
+            novas.append(f"{c['numero']}|status_resolvido|{mudou.get('para')}|{mudou.get('quando')}")
+        novas = [k for k in novas if k not in avisados and (not so_resolvido or "|status_resolvido|" in k)]
         if novas:
+            c["_aviso_resolvido"] = any("|status_resolvido|" in k for k in novas)
             casos.append(c)
             chaves += novas
     if not casos:
-        return "Nada novo para avisar por e-mail."
+        return "" if so_resolvido else "Nada novo para avisar por e-mail."
     cfg = configparser.ConfigParser()
     cfg.read(SMTP_INI, encoding="utf-8")
     email = cfg.get("gmail", "email", fallback="").strip()
@@ -299,9 +323,17 @@ def _avisar_por_email(t):
     rotulos = {"novidade": "Resposta nova", "aguardando_voce": "Aguardando você", "vencido": "Acompanhamento vencido",
                "parado": "Parado"}
     e = html.escape
+
+    def atencao(c):
+        itens = [rotulos[s] for s in c["sinais"] if s in rotulos]
+        if c.get("_aviso_resolvido"):
+            m = c["status_resolvido_mudou"]
+            itens.append(f"Status Resolvido: {m.get('de') or 'vazio'} → {m.get('para')}")
+        return ", ".join(itens)
+
     linhas = "".join(
         f"<tr><td><a href='{e(c['link'])}'>{e(c['numero'])}</a></td><td>{e(c.get('titulo') or '')}</td><td>{e(c.get('parceiro') or '')}</td>"
-        f"<td>{e(c['status_txt'])}</td><td><b>{e(', '.join(rotulos[s] for s in c['sinais'] if s in rotulos))}</b></td>"
+        f"<td>{e(c['status_txt'])}</td><td><b>{e(atencao(c))}</b></td>"
         f"<td>{e(PAPEIS.get((c.get('ultima_resposta') or {}).get('papel'), ''))} {e((c.get('ultima_resposta') or {}).get('autor', ''))}: "
         f"{e((c.get('ultima_resposta') or {}).get('texto', '')[:200])}</td></tr>" for c in casos)
     corpo = ("<p>Chamados que pedem sua atenção hoje:</p><table border='1' cellpadding='6' cellspacing='0' "

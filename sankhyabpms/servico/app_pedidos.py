@@ -88,7 +88,7 @@ def _classificar(tarefas):
         if c.get("Agenda") == "Planejamento":
             ignoradas["planejamento"] += 1
             continue
-        if c.get("Experience") == "Lixeira":
+        if c.get("Experience") in ("Lixeira", "Cancelado"):  # 10/11/2026: Lixeira virou Cancelado
             ignoradas["lixeira"] += 1
             continue
         lista = (x.get("list") or {}).get("name", "")

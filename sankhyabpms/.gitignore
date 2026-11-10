@@ -1,3 +1,5 @@
 ﻿dados/
 __pycache__/
 *.pyc
+ferramentas/
+Instalar_LanguageTool.log

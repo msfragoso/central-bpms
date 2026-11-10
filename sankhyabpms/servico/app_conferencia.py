@@ -129,6 +129,38 @@ def _tag_id_do_experience(t, om_df, ini, fim, caminho_cu=None):
     return om_df
 
 
+def _tag_do_lancamento(token, cache, order, data_txt, hora_ini):
+    """
+    10/11/2026 (Fragoso): o apontamento travado não traz a TAG do ClickUp no texto (0 de 21
+    casos), mas o lançamento original tem. Procura pelo projeto, pessoa, dia e código da aplicação; com mais de
+    uma tarefa possível, desempata pela hora de início. Sem certeza devolve None e vale o cruzamento normal.
+    """
+    import experience_api as exp
+    from datetime import datetime
+    impl = order.get("implantation_id")
+    try:
+        dia = datetime.strptime(str(data_txt)[:10], "%d/%m/%Y").date().isoformat()
+    except ValueError:
+        return None
+    if ("pessoas", impl) not in cache:
+        cache[("pessoas", impl)] = {str(p.get("person_name") or "").strip().lower(): p.get("id")
+                                    for p in (exp.get_persons_by_implantation(token, impl) or [])}
+    pessoa = cache[("pessoas", impl)].get(str(order.get("person_name") or "").strip().lower())
+    if not pessoa:
+        return None
+    if (impl, pessoa, dia) not in cache:
+        cache[(impl, pessoa, dia)] = exp.search_tasks(token, impl, person_id=pessoa, period_from=dia, period_to=dia) or []
+    codigo = str(order.get("application_code") or "")
+    candidatos = [(exp.extrair_tag_clickup(l.get("additional_information")), l) for l in cache[(impl, pessoa, dia)]
+                  if str(l.get("status") or "").upper() != "PENDING"
+                  and (not codigo or str(l.get("application_code") or "") == codigo)]
+    candidatos = [(tag, l) for tag, l in candidatos if tag]
+    if len({tag for tag, _ in candidatos}) > 1:
+        candidatos = [(tag, l) for tag, l in candidatos if str(l.get("task_hour_to_start") or "")[:5] == str(hora_ini or "")[:5]]
+    tags = {tag for tag, _ in candidatos}
+    return tags.pop() if len(tags) == 1 else None
+
+
 def _travadas_do_experience(t, om_df, ini, fim, caminho_cu=None):
     """
     Pedido do Fragoso (14/10/2026): depois da busca no OM, cruza também os
@@ -183,6 +215,7 @@ def _travadas_do_experience(t, om_df, ini, fim, caminho_cu=None):
         return om_df
     nums_om = set(om_df["Núm. OS"].astype(str).str.replace(".0", "", regex=False))
     linhas = []
+    cache_lancamentos = {}
     for o in travadas:
         if o.get("numos_sankhya") and str(o["numos_sankhya"]) in nums_om:
             continue  # já virou OS e está no OM
@@ -192,8 +225,15 @@ def _travadas_do_experience(t, om_df, ini, fim, caminho_cu=None):
         tarefas = get_order_tasks(token, oid) or []
         st = tarefas[0] if tarefas else {}
         info = st.get("additional_information")
+        data_exec = st.get("date_done") or o.get("order_done_date") or o.get("date_done")
+        tag = extrair_tag_clickup(info) if info else None
+        if not tag:
+            try:
+                tag = _tag_do_lancamento(token, cache_lancamentos, o, data_exec, st.get("hour_to_start"))
+            except Exception as e:
+                t.log(f"⚠ Travadas: não consegui ler o lançamento original da OS {oid} ({e.__class__.__name__}).")
         linhas.append({
-            "Dt execução": st.get("date_done") or o.get("order_done_date") or o.get("date_done"),
+            "Dt execução": data_exec,
             "Núm. OS": f"Pendente de Liberação pelo GP (Cód: {oid})",
             "Sub-OS": 1, "Nome (Executante)": o.get("person_name"),
             "Número Unico FAP": impl_fap.get(o.get("implantation_id")) or o.get("fap"),
@@ -201,11 +241,11 @@ def _travadas_do_experience(t, om_df, ini, fim, caminho_cu=None):
             "Tempo gasto": st.get("worked_hours") or o.get("diff_time"),
             "Hora Inicial": st.get("hour_to_start") or "00:00", "Hora Final": st.get("hour_to_finish") or "00:00",
             "Intervalo": st.get("hour_to_lunch") or "00:00", "Nro.único do pedido": o.get("application_code"),
-            "Solução": extrair_solucao(info) if info else "", "Tag ClickUp": extrair_tag_clickup(info) if info else None,
+            "Solução": extrair_solucao(info) if info else "", "Tag ClickUp": tag,
         })
         time.sleep(0.1)
     t.log(f"Travadas: {len(linhas)} apontamento(s) travado(s) no Experience entram no cruzamento "
-          "como \"Aguardando aprovação do GP\".")
+          f"como \"Aguardando aprovação do GP\" ({sum(1 for x in linhas if x['Tag ClickUp'])} ligados pela TAG do lançamento original).")
     if not linhas:
         return om_df
     novo = pd.DataFrame(linhas)

@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.13.1";
+  const VERSAO = "1.14.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -20,6 +20,7 @@ const BPMS = (() => {
     { id: "credenciais", href: "credenciais.html", rotulo: "Credenciais" },
     { id: "organograma", href: "organograma.html", rotulo: "Organograma" },
     { id: "chamados", href: "chamados.html", rotulo: "Chamados" },
+    { id: "chat_os", href: "chat_os.html", rotulo: "Chat x OS" },
   ];
 
   // 04/11/2026 (Fragoso): ícone de cada módulo, usado no menu do topo e nos cartões do Início
@@ -38,6 +39,7 @@ const BPMS = (() => {
     credenciais: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M13 10l2 2"/>',
     organograma: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>',
     chamados: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    chat_os: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
     inicio: '<path d="M3 11l9-8 9 8"/><path d="M5 9.5V21h14V9.5M10 21v-6h4v6"/>',
   };
   const icone = (id) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONES[id] || ""}</svg>`;

@@ -17,7 +17,7 @@ _ARQUIVOS_MODULO = {
                     "@conferencia_os/motor_conferencia.py", "@conferencia_os/html_conferencia.py",
                     "@conferencia_os/dados_conferencia.py", "@conferencia_os/config_conferencia.py"],
     "fase3": ["web/fase3.html", "servico/app_fase3.py", "@conferencia_os/fase3_prazo_retroativo.py"],
-    "aceite": ["web/aceite.html", "servico/app_aceite.py", "@aceite_os/enviar_aceite_os.py"],
+    "aceite": ["web/aceite.html", "servico/app_aceite.py", "servico/revisor_texto.py", "servico/aderencia_texto.py", "@aceite_os/enviar_aceite_os.py"],
     "agenda": ["web/agenda.html", "servico/app_agenda.py", "servico/agenda_layout.py"],
     "atendimentos": ["web/atendimentos.html", "servico/app_atendimentos.py", "@atendimentos_whatsapp/gerar_relatorio.py"],
     "permissoes": ["web/permissoes.html", "servico/app_permissoes.py", "servico/clickup_sessao.py"],
@@ -25,6 +25,7 @@ _ARQUIVOS_MODULO = {
     "planilhas": ["web/planilhas.html", "servico/app_planilhas.py", "@conferencia_os/conferencia_planilhas.py"],
     "organograma": ["web/organograma.html", "servico/app_organograma.py"],
     "chamados": ["web/chamados.html", "servico/app_chamados.py"],
+    "chat_os": ["web/chat_os.html", "servico/app_chat_os.py", "@atendimentos_whatsapp/cruzamento_chat_os.py"],
 }
 _cache_atualizado = {"quando": 0, "dados": {}}
 

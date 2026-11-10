@@ -8,6 +8,19 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.14.0 — 10/11/2026
+- Nova tela Chat x OS: cruza os atendimentos do Total Chat com as OS do Sankhya-OM no mês e gera PDF e
+  Excel com o tempo de conversa, quanto dele tem OS vinculada, índice de apontamento por atendente,
+  evolução semanal e histórico entre meses. Só leitura.
+- Aceite de OS: antes do envio, a Central revisa sozinha o texto da Solução com um corretor instalado no
+  próprio computador (Instalar_LanguageTool.bat; o texto não sai da máquina) e mostra a aderência da
+  Solução ao título e ao Detalhamento da tarefa. A correção aprovada é gravada na OS no Experience e no
+  X-Observações OS da tarefa. Tarefas sem boa referência ganham sugestão de título e Detalhamento para
+  aprovar. O envio só libera depois da verificação.
+- Conferência de OS: apontamentos aguardando o GP passam a ligar na tarefa pela TAG do lançamento original.
+- Chamados: Etapa, Status Resolvido (com cores e aviso por e-mail quando muda), Número OS e Data da
+  Execução lidos do portal; nova aba Resumo, uma linha por chamado; a leitura não mostra mais a janela.
+
 ## 1.13.1 — 09/11/2026
 - Sankhya-OM: o login automático agora preenche a senha e clica em Prosseguir sozinho, também na
   tela que já lembra o usuário. Cada tentativa fica registrada, sem usuário nem senha.

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat x OS</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="chatos.titulo">Chat x OS</h1>
+      <p data-texto="chatos.subtitulo">Tempo gasto nos atendimentos do Total Chat e quanto desse tempo tem OS no Sankhya OM</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="chat_os"></span>
+  </div>
+  <p class="explicacao" data-texto="card.chat_os.descricao">Cruza os atendimentos do mês com as OS e gera os indicadores em PDF e Excel. O vínculo é um indício por parceiro, data e nome do contato. Nada é alterado nos sistemas.</p>
+
+  <div class="grade duas">
+    <section class="card faixa">
+      <h2>1. CSV do Total Chat</h2>
+      <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px">Envie o CSV do mês, o mesmo usado em Atendimentos WhatsApp.</p>
+      <div class="campos">
+        <div class="campo"><label for="arquivo">Enviar CSV</label><input type="file" id="arquivo" accept=".csv" multiple></div>
+      </div>
+      <div class="tabela-caixa" style="margin-top:10px">
+        <table>
+          <thead><tr><th>Mês</th><th>Arquivo</th><th class="centro">Atendimentos</th></tr></thead>
+          <tbody id="corpo-meses"><tr><td colspan="3" class="vazio-tabela">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card faixa">
+      <h2>2. Gerar os indicadores</h2>
+      <div class="campos">
+        <div class="campo c6"><label for="mes">Mês</label><select id="mes"></select></div>
+      </div>
+      <div class="acoes">
+        <button class="btn secundario" id="btn-om" type="button">Conectar ao Sankhya-OM</button>
+        <button class="btn" id="btn-gerar" type="button">Gerar indicadores</button>
+      </div>
+      <pre class="log" id="log" style="margin-top:12px"></pre>
+      <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+      <div class="arquivos" id="arquivos"></div>
+    </section>
+  </div>
+
+  <section class="card faixa" style="margin-top:16px">
+    <h2>Evolução entre meses</h2>
+    <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px">Tempo de conversa: do início ao fim do atendimento, simultâneos divididos e nada depois das 18h se a conversa não fechou no dia.</p>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr><th>Mês</th><th class="centro">Atend. de parceiros</th><th class="centro">Horas de conversa</th><th class="centro">Tempo com OS vinculada</th><th class="centro">Horas sem OS comprovada</th><th class="centro">Índice de apontamento</th><th class="centro">Horas de OS</th></tr></thead>
+        <tbody id="corpo-hist"><tr><td colspan="7" class="vazio-tabela">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, post, esc, toast, arquivoBase64 } = BPMS;
+  BPMS.montarTopo("chat_os");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  const NOMES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  const rotulo = (m) => `${NOMES[Number(m.slice(5, 7)) - 1]}/${m.slice(0, 4)}`;
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const num = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  let meses = [];
+
+  async function carregar() {
+    try {
+      const r = await get("/api/chat-os/opcoes");
+      meses = r.meses;
+      $("#corpo-meses").innerHTML = meses.length
+        ? meses.slice().reverse().map((m) => `<tr><td><b>${esc(rotulo(m.mes))}</b></td><td>${esc(m.arquivo)}</td><td class="centro">${m.linhas}</td></tr>`).join("")
+        : `<tr><td colspan="3" class="vazio-tabela">Nenhum CSV ainda.</td></tr>`;
+      const atual = $("#mes").value;
+      $("#mes").innerHTML = meses.slice().reverse().map((m) => `<option value="${esc(m.mes)}">${esc(rotulo(m.mes))}</option>`).join("");
+      if (atual) $("#mes").value = atual;
+      $("#btn-gerar").disabled = !meses.length;
+      const h = Object.keys(r.historico).sort().reverse();
+      $("#corpo-hist").innerHTML = h.length
+        ? h.map((k) => { const x = r.historico[k]; return `<tr><td><b>${esc(x.rotulo)}</b></td><td class="centro">${x.atendimentos_parceiros}</td><td class="centro">${num(x.horas_parceiros)}</td><td class="centro">${pct(x.pct_com_os)}</td><td class="centro">${num(x.horas_sem_os)}</td><td class="centro">${pct(x.indice_apontamento)}</td><td class="centro">${num(x.horas_os)}</td></tr>`; }).join("")
+        : `<tr><td colspan="7" class="vazio-tabela">Gere o primeiro mês para começar a comparação.</td></tr>`;
+    } catch (e) { toast(e.message, "erro"); }
+  }
+
+  async function statusOm() {
+    try {
+      const s = await get("/api/om/status");
+      $("#btn-om").textContent = s.estado === "conectado" ? "Sankhya-OM conectado" : "Conectar ao Sankhya-OM";
+      $("#btn-om").disabled = s.estado === "conectado";
+    } catch (e) { /* a Central informa ao gerar */ }
+  }
+  $("#btn-om").onclick = async () => {
+    try { await post("/api/om/conectar"); toast("Faça o login na janela do Sankhya-OM que abriu (se ainda não estiver logado)."); }
+    catch (e) { toast(e.message, "erro"); }
+    statusOm();
+  };
+
+  $("#arquivo").onchange = async (e) => {
+    for (const f of e.target.files) {
+      try {
+        const r = await post("/api/atendimentos/enviar-csv", { nome: f.name, conteudo_b64: await arquivoBase64(f) });
+        toast(`${r.arquivo}: ${r.rotulo}, ${r.linhas} atendimentos.`, "ok");
+      } catch (err) { toast(`${f.name}: ${err.message}`, "erro"); }
+    }
+    e.target.value = "";
+    carregar();
+  };
+
+  const travar = (sim) => { $("#btn-gerar").disabled = sim || !meses.length; };
+  const fim = () => { travar(false); carregar(); };
+  $("#btn-gerar").onclick = () => {
+    travar(true);
+    BPMS.iniciar("/api/chat-os/gerar", { mes: $("#mes").value }, el, fim);
+  };
+
+  statusOm();
+  setInterval(statusOm, 8000);
+  carregar().then(() => BPMS.retomar(["chat_os"], el, fim, () => travar(true)));
+})();
+</script>
+</body>
+</html>

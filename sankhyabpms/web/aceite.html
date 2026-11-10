@@ -47,6 +47,7 @@
     <div class="acoes">
       <button class="btn secundario" id="btn-marcar">Marcar todas as prontas</button>
       <button class="btn secundario" id="btn-desmarcar">Desmarcar todas</button>
+      <button class="btn secundario" id="btn-revisar" disabled>Revisar textos</button>
       <span class="espaco"></span>
       <button class="btn perigo" id="btn-enviar" disabled>Enviar marcadas</button>
     </div>
@@ -63,13 +64,13 @@
 <script src="assets/comum.js"></script>
 <script>
 (() => {
-  const { $, $$, get, esc, toast, confirmar, informar, mascaraData, ordenavel, comparar } = BPMS;
+  const { $, $$, get, post, esc, toast, confirmar, informar, modal, mascaraData, ordenavel, comparar } = BPMS;
   BPMS.montarTopo("aceite");
   const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
   [$("#de"), $("#ate")].forEach(mascaraData);
 
   // Um aceite por OS (09/10/2026): cada OS é uma linha, com as horas dela (sem somar a FAP).
-  let linhas = [], marcadas = new Set(), situacaoEnvio = {}, ocupado = false;
+  let linhas = [], marcadas = new Set(), situacaoEnvio = {}, ocupado = false, revisoes = {}, aderencias = {}, semReferencia = {}, revisado = false;
   const estadoOrdem = ordenavel($("#tabela"), desenhar);
   const minutos = (h) => { const m = /^(\d+):(\d+)/.exec(h || ""); return m ? +m[1] * 60 + +m[2] : -1; };
   const dataNum = (s) => { const d = BPMS.dataValida(s); return d ? d.getTime() : 0; };
@@ -108,7 +109,7 @@
             + (o.alertas && o.alertas.length ? `<br><span style="font-size:11px;color:var(--aviso);font-weight:600">${o.alertas.map(esc).join("<br>")}</span>` : "") : "-"}</td>
           <td style="min-width:220px;max-width:340px">${o && o.solucao ? (o.solucao.length > 120
             ? `<details><summary style="cursor:pointer;font-size:12px">${esc(o.solucao.slice(0, 120))}…</summary><div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div></details>`
-            : `<div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div>`) : ""}</td>
+            : `<div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div>`) : ""}${revisoes[k] && pronta && !env ? `<button class="btn secundario pequeno" style="margin-top:6px" data-revisar="${esc(k)}" type="button">Revisar: ${revisoes[k].ajustes.length + (revisoes[k].caixa_alta ? 1 : 0)} ajuste(s)${revisoes[k].conferir.length ? `, ${revisoes[k].conferir.length} a conferir` : ""}</button>` : ""}${aderencias[k] && pronta && !env ? `<button class="btn secundario pequeno" style="margin-top:6px;border-color:var(--aviso);color:var(--aviso)" data-aderencia="${esc(k)}" type="button">Conferir aderência</button>` : ""}${semReferencia[k] && pronta && !env ? `<button class="btn secundario pequeno" style="margin-top:6px" data-semref="${esc(k)}" type="button" title="${esc(semReferencia[k].motivo)}">Sem referência</button>` : ""}</td>
           <td>${esc(r.aprovadores.map((a) => a.email).join(", "))}</td></tr>`;
       }).join("");
     }
@@ -116,7 +117,8 @@
     const prontas = todos.filter((i) => i.r.situacao === "PRONTA").length;
     const verif = todos.filter((i) => i.r.situacao === "PRONTA" && i.o.alertas && i.o.alertas.length).length;
     $("#contagem").textContent = linhas.length ? `${prontas} OS pronta(s)${verif ? ` (${verif} para verificar)` : ""} · ${todos.length - prontas} bloqueada(s) · ${marcadas.size} marcada(s)` : "";
-    $("#btn-enviar").disabled = ocupado || !marcadas.size;
+    $("#btn-enviar").disabled = ocupado || !marcadas.size || !revisado;
+    $("#btn-revisar").disabled = ocupado || !prontas;
   }
 
   $("#corpo").addEventListener("click", (e) => {
@@ -125,6 +127,12 @@
       cb.checked ? marcadas.add(cb.dataset.marcar) : marcadas.delete(cb.dataset.marcar);
       return desenhar();
     }
+    const rv = e.target.closest("[data-revisar]");
+    if (rv) return abrirRevisao(rv.dataset.revisar);
+    const ad = e.target.closest("[data-aderencia]");
+    if (ad) return abrirAderencia(ad.dataset.aderencia);
+    const sr = e.target.closest("[data-semref]");
+    if (sr) return abrirSemReferencia(sr.dataset.semref);
     if (e.target.closest("details")) return;  // abrir/fechar a solução não abre o detalhe da FAP
     const tr = e.target.closest("tr[data-fap]");
     if (tr) detalhe(linhas.find((r) => r.fap === tr.dataset.fap));
@@ -140,20 +148,94 @@
       + (r.bloqueios.length ? `<b style="color:var(--perigo)">Bloqueios</b><ul>${r.bloqueios.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""));
   }
 
+  async function abrirSemReferencia(k) {
+    const item = itens().find((i) => i.k === k), a = semReferencia[k];
+    if (!item || !a) return;
+    const pr = modal({
+      titulo: `Sem referência · OS ${item.o.num} · ${item.r.parceiro}`,
+      html: `<p style="margin:0 0 8px"><b>${esc(a.motivo)}.</b> Atual: <i>${esc(a.titulo)}</i>${a.detalhamento ? ` · ${esc(a.detalhamento.slice(0, 140))}` : " · sem Detalhamento"}</p>
+        <label class="ajuda" for="sug-titulo">Título sugerido (pode editar)</label>
+        <input id="sug-titulo" style="width:100%" value="${esc(a.sugestao_titulo)}">
+        <label class="ajuda" for="sug-detalhe" style="display:block;margin-top:10px">Detalhamento sugerido (pode editar)</label>
+        <textarea id="sug-detalhe" rows="6" style="width:100%;font:inherit;font-size:13px">${esc(a.sugestao_detalhamento)}</textarea>
+        <p style="margin:10px 0 0"><a href="${esc(a.url)}" target="_blank" rel="noopener">Abrir a tarefa no ClickUp</a></p>
+        <div class="aviso" style="margin-top:10px">A sugestão vem da própria Solução. Ajuste para refletir a demanda original: se ficar igual à Solução, a checagem de aderência perde o sentido nesta tarefa.</div>`,
+      opcoes: [{ valor: false, rotulo: "Cancelar", estilo: "neutro" }, { valor: true, rotulo: "Aprovar e gravar no ClickUp", estilo: "primario" }],
+    });
+    const cT = $("#sug-titulo"), cD = $("#sug-detalhe");
+    let titulo = cT.value, detalhamento = cD.value;
+    cT.addEventListener("input", () => { titulo = cT.value; });
+    cD.addEventListener("input", () => { detalhamento = cD.value; });
+    if (!(await pr)) return;
+    try {
+      const res = await post("/api/aceite/tarefa/ajustar", { fap: item.r.fap, os: item.o.id, titulo, detalhamento, confirmar: true });
+      delete semReferencia[k];
+      toast(res.mensagem, "ok");
+      desenhar();
+    } catch (err) { toast(err.message, "erro"); }
+  }
+
+  function abrirAderencia(k) {
+    const item = itens().find((i) => i.k === k), a = aderencias[k];
+    if (!item || !a) return;
+    const bloco = (rot, txt) => `<p style="margin:10px 0 2px"><b>${rot}</b></p><div style="white-space:pre-wrap;font-size:13px;max-height:170px;overflow:auto;padding:8px;border:1px solid var(--borda);border-radius:6px">${esc(txt)}</div>`;
+    informar(`Conferir aderência · OS ${item.o.num} · ${item.r.parceiro}`,
+      `<div class="aviso">A Solução não tem palavras importantes em comum com a tarefa. É só um aviso: a comparação olha palavras, não o sentido.</div>`
+      + bloco("Título da tarefa", a.titulo) + bloco("Detalhamento", a.detalhamento) + bloco("Solução da OS", item.o.solucao));
+  }
+
+  async function abrirRevisao(k) {
+    const item = itens().find((i) => i.k === k), rv = revisoes[k];
+    if (!item || !rv) return;
+    const { r, o } = item;
+    const conferir = rv.conferir.map((c) => `<li><b>${esc(c.trecho)}</b> · ${esc(c.motivo)}${c.opcoes.length ? ` · sugestões: ${c.opcoes.map(esc).join(", ")}` : ""}</li>`).join("");
+    const ajustes = rv.ajustes.map((a) => `<li>${esc(a.de)} → <b>${esc(a.para)}</b></li>`).join("");
+    const pr = modal({
+      titulo: `Revisar Solução · OS ${o.num} · ${r.parceiro}`,
+      html: `<label class="ajuda">Texto atual</label><div style="white-space:pre-wrap;font-size:13px;max-height:150px;overflow:auto;padding:8px;border:1px solid var(--borda);border-radius:6px">${esc(rv.original)}</div>
+        <label class="ajuda" for="sug-texto" style="display:block;margin-top:10px">Texto corrigido (pode editar antes de aprovar)</label>
+        <textarea id="sug-texto" rows="8" style="width:100%;font:inherit;font-size:13px">${esc(rv.sugerido)}</textarea>
+        ${rv.caixa_alta ? `<p class="ajuda">Texto convertido de caixa alta. Confira nomes próprios.</p>` : ""}
+        ${conferir ? `<p style="margin:10px 0 2px"><b>Confira antes de aprovar</b></p><ul style="margin:0">${conferir}</ul>` : ""}
+        ${ajustes ? `<details style="margin-top:8px"><summary style="cursor:pointer">Ajustes aplicados (${rv.ajustes.length})</summary><ul style="margin:4px 0 0">${ajustes}</ul></details>` : ""}
+        <div class="aviso" style="margin-top:10px">Aprovar grava este texto na OS no Experience e no X-Observações OS da tarefa no ClickUp. Nenhum aceite é gerado nem enviado.</div>`,
+      opcoes: [{ valor: false, rotulo: "Cancelar", estilo: "neutro" }, { valor: true, rotulo: "Aprovar e gravar", estilo: "primario" }],
+    });
+    const caixa = $("#sug-texto");
+    let texto = caixa.value;
+    caixa.addEventListener("input", () => { texto = caixa.value; });
+    if (!(await pr)) return;
+    try {
+      const res = await post("/api/aceite/solucao/gravar", { fap: r.fap, os: o.id, original: rv.original, texto, confirmar: true });
+      o.solucao = res.solucao;
+      delete revisoes[k];
+      toast(res.mensagem, res.clickup_ok ? "ok" : "erro");
+      desenhar();
+    } catch (err) { toast(err.message, "erro"); }
+  }
+
   function travar(sim) { ocupado = sim; $("#btn-conferir").disabled = sim; desenhar(); }
 
   $("#btn-marcar").onclick = () => { itens().forEach(({ r, o, k }) => { if (o && r.situacao === "PRONTA" && !situacaoEnvio[k]) marcadas.add(k); }); desenhar(); };
   $("#btn-desmarcar").onclick = () => { marcadas.clear(); desenhar(); };
 
+  // 10/11/2026 (Fragoso): a verificação dos textos acontece sempre antes do envio; roda sozinha depois de Conferir.
+  const iniciarRevisao = () => { travar(true); BPMS.iniciar("/api/aceite/revisar-textos", {}, el, aoRevisar); };
   const aoConferir = (t) => {
     travar(false);
-    if (t && t.resultado) { linhas = t.resultado.linhas; marcadas.clear(); situacaoEnvio = {}; desenhar(); }
+    if (t && t.resultado) {
+      linhas = t.resultado.linhas; marcadas.clear(); situacaoEnvio = {}; revisoes = {}; aderencias = {}; semReferencia = {}; revisado = false; desenhar();
+      if (itens().some((i) => i.o && i.r.situacao === "PRONTA")) iniciarRevisao();
+    }
   };
   $("#btn-conferir").onclick = () => {
     if (!BPMS.dataValida($("#de").value) || !BPMS.dataValida($("#ate").value)) return toast("Use datas no formato DD/MM/AAAA.", "erro");
     travar(true);
     BPMS.iniciar("/api/aceite/conferir", { de: $("#de").value, ate: $("#ate").value, faps: $("#faps").value }, el, aoConferir);
   };
+
+  const aoRevisar = (t) => { travar(false); if (t && t.resultado) { revisoes = t.resultado.revisoes; aderencias = t.resultado.aderencias || {}; semReferencia = t.resultado.sem_referencia || {}; revisado = true; desenhar(); } };
+  $("#btn-revisar").onclick = iniciarRevisao;
 
   const aoEnviar = (t) => {
     travar(false);
@@ -163,7 +245,7 @@
     const sel = itens().filter((i) => i.o && marcadas.has(i.k));
     if (!sel.length) return toast("Nenhuma OS marcada.");
     const ok = await confirmar("Confirmar envio",
-      `Gerar e enviar <b>${sel.length} aceite(s)</b>, um por OS?<ul>${sel.map(({ r, o }) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)} h${o.alertas && o.alertas.length ? ` <b style="color:var(--aviso)">VERIFICAR: ${esc(o.alertas.join("; "))}</b>` : ""}</li>`).join("")}</ul>`
+      `Gerar e enviar <b>${sel.length} aceite(s)</b>, um por OS?<ul>${sel.map(({ r, o }) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)} h${o.alertas && o.alertas.length ? ` <b style="color:var(--aviso)">VERIFICAR: ${esc(o.alertas.join("; "))}</b>` : ""}${revisoes[`${r.fap}|${o.id}`] ? ` <b style="color:var(--aviso)">TEXTO A REVISAR</b>` : ""}${aderencias[`${r.fap}|${o.id}`] ? ` <b style="color:var(--aviso)">CONFERIR ADERÊNCIA</b>` : ""}</li>`).join("")}</ul>`
       + `<div class="aviso erro">O e-mail sai direto do Experience para os aprovadores e não tem como desfazer.</div>`,
       { botao: "Enviar aceites", perigo: true });
     if (!ok) return;
@@ -174,7 +256,7 @@
   (async () => {
     try { const o = await get("/api/aceite/opcoes"); $("#de").value = o.de; $("#ate").value = o.ate; }
     catch (e) { toast(e.message, "erro"); }
-    BPMS.retomar(["aceite_conferir", "aceite_enviar"], el, (t) => (t && t.tipo === "aceite_enviar" ? aoEnviar : aoConferir)(t), () => travar(true));
+    BPMS.retomar(["aceite_conferir", "aceite_enviar", "aceite_revisar"], el, (t) => (t && t.tipo === "aceite_enviar" ? aoEnviar : t && t.tipo === "aceite_revisar" ? aoRevisar : aoConferir)(t), () => travar(true));
   })();
 })();
 </script>

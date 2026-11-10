@@ -19,12 +19,22 @@
   .ch-filtro { border: 1px solid var(--linha); background: var(--card); color: var(--texto); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 13px; }
   .ch-filtro b { margin-left: 4px; }
   .ch-filtro.ativo { background: var(--local); color: #fff; border-color: var(--local); }
+  /* 10/11/2026 (Fragoso): aba Resumo, uma linha por chamado */
+  .ch-vistas { display: flex; gap: 6px; margin-top: 16px; }
+  .ch-resumo { overflow-x: auto; border: 1px solid var(--linha); border-radius: 10px; background: var(--card); }
+  .ch-resumo table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ch-resumo th { text-align: left; font-size: 11px; text-transform: uppercase; color: var(--suave); padding: 8px; border-bottom: 1px solid var(--linha); white-space: nowrap; }
+  .ch-resumo td { padding: 7px 8px; border-bottom: 1px solid var(--linha); vertical-align: middle; }
+  .ch-resumo tr.encerrado td { color: var(--suave); }
+  .ch-resumo .ch-titulo-curto { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+  .ch-resolvido.mini { font-size: 11px; padding: 3px 8px; white-space: nowrap; display: inline-block; }
   .ch-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
   .ch-card { background: var(--card); border: 1px solid var(--linha); border-left: 5px solid var(--linha); border-radius: 10px; padding: 14px; box-shadow: var(--sombra); display: flex; flex-direction: column; gap: 8px; }
   .ch-card.s-novidade { border-left-color: #2f6fed; }
   .ch-card.s-aguardando_voce { border-left-color: var(--perigo); }
   .ch-card.s-vencido { border-left-color: var(--aviso); }
-  .ch-card.encerrado { opacity: .65; }
+  /* 10/11/2026 (Fragoso): no chamado resolvido o cartão fica esmaecido, menos o Status Resolvido, que segue em destaque */
+  .ch-card.encerrado > *:not(.ch-resolvido) { opacity: .65; }
   .ch-topo { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
   .ch-num { font-weight: 800; font-size: 16px; }
   .ch-titulo { font-weight: 800; font-size: 15px; color: var(--texto); }
@@ -41,6 +51,14 @@
   .ch-status.st-voce { background: #d92d20; } .ch-status.st-resolvido { background: #12805c; }
   .ch-status.st-escalonado { background: #7a3fd1; } .ch-status.st-espera { background: #b54708; }
   .ch-status.st-naolido { background: #6b7a72; }
+  .ch-etapa { font-size: 12px; font-weight: 800; color: var(--texto); }
+  /* 10/11/2026 (Fragoso): Status Resolvido em destaque, com contraste nos dois temas */
+  .ch-resolvido { font-size: 13px; font-weight: 800; color: #fff; background: #b45309; border-radius: 6px; padding: 6px 10px; }
+  .ch-resolvido span { font-weight: 700; opacity: .9; }
+  /* cor pelo valor: validado = verde, aguardando = laranja, demais = azul */
+  .ch-resolvido.r-validado { background: #15803d; }
+  .ch-resolvido.r-outro { background: #1d4ed8; }
+  .ch-etapa span { font-weight: 700; color: var(--suave); margin-right: 4px; }
   .ch-meta b { color: var(--texto); }
   .ch-atores { font-size: 12px; color: var(--suave); display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .ch-papel { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; color: #fff; white-space: nowrap; }
@@ -82,6 +100,10 @@
     </form>
   </section>
 
+  <div class="ch-vistas" id="vistas">
+    <button class="ch-filtro" data-vista="cartoes" type="button">Cartões</button>
+    <button class="ch-filtro" data-vista="resumo" type="button">Resumo</button>
+  </div>
   <div class="ch-filtros" id="filtros"></div>
   <div class="ch-linha" style="margin-bottom:12px">
     <button class="btn" id="btn-atualizar" type="button">Atualizar andamento no portal</button>
@@ -98,6 +120,8 @@
   BPMS.montarTopo("chamados");
   if (mascaraData) mascaraData($("#novo-proximo"));
   let chamados = [], filtro = localStorage.getItem("bpms-chamados-filtro") || "abertos";
+  let vista = "cartoes";
+  try { vista = localStorage.getItem("bpms-chamados-vista") || "cartoes"; } catch (e) { /* sem storage */ }
   const PAPEL = { atribuido: "Atendente", suporte: "Suporte", solicitante: "Solicitante", voce: "Você", outro: "Participante" };
   const ROT = { novidade: "Resposta nova", aguardando_voce: "Aguardando você", vencido: "Acompanhamento vencido", parado: "Parado" };
   const FILTROS = [
@@ -133,6 +157,9 @@
     return "";
   }
 
+  // 10/11/2026 (Fragoso): Validado pelo Cliente em verde; Aguardando fica laranja; os demais, azul
+  const corResolvido = (v) => { const t = BPMS.normalizar(v || ""); return t.includes("validado") ? "r-validado" : t.includes("aguard") ? "" : "r-outro"; };
+
   function cartao(c) {
     const r = c.ultima_resposta;
     const dias = c.dias_sem_movimento;
@@ -141,6 +168,9 @@
         <span class="ch-etiquetas"><span class="ch-parceiro ${c.parceiro ? "" : "vazio"}" data-parceiro title="Clique para editar o parceiro">${esc(c.parceiro || "+ parceiro")}</span>
         <span class="ch-status ${classeStatus(c)}">${esc(c.status_txt)}</span></span></div>
       <div class="ch-titulo">${esc(c.titulo || c.titulo_portal || "(ainda não lido no portal)")}</div>
+      ${c.etapa ? `<div class="ch-etapa"><span>Etapa:</span>${esc(c.etapa)}</div>` : ""}
+      ${c.numero_os || c.data_execucao ? `<div class="ch-etapa">${c.numero_os ? `<span>Número OS:</span>${esc(c.numero_os)}` : ""}${c.numero_os && c.data_execucao ? " &nbsp;·&nbsp; " : ""}${c.data_execucao ? `<span>Data da Execução:</span>${esc(c.data_execucao)}` : ""}</div>` : ""}
+      ${c.status_resolvido ? `<div class="ch-resolvido ${corResolvido(c.status_resolvido)}"><span>Status Resolvido:</span> ${esc(c.status_resolvido)}</div>` : ""}
       <div class="ch-meta">${c.atualizado_txt ? `última movimentação ${esc(c.atualizado_txt)}${dias != null ? ` (há ${dias} dia${dias === 1 ? "" : "s"})` : ""}` : "cadastrado em " + esc(c.criado)}</div>
       ${c.sinais.length ? `<div class="ch-sinais">${c.sinais.map((s) => `<span class="ch-sinal ${s}">${ROT[s]}${s === "novidade" && c.ultima_resposta?.papel ? " · " + (PAPEL[c.ultima_resposta.papel] || "") : ""}</span>`).join("")}</div>` : ""}
       ${(c.solicitante || c.atribuido) ? `<div class="ch-atores">${c.solicitante ? `<span><span class="ch-papel p-solicitante">Solicitante</span> ${esc(c.solicitante)}</span>` : ""}${c.atribuido ? `<span><span class="ch-papel p-atribuido">Atribuído a</span> ${esc(c.atribuido)}</span>` : ""}</div>` : ""}
@@ -161,13 +191,44 @@
     </article>`;
   }
 
+  function linhaResumo(c) {
+    const dias = c.dias_sem_movimento;
+    return `<tr class="${encerrado(c) ? "encerrado" : ""}" data-n="${esc(c.numero)}">
+      <td><a class="ch-num" href="${esc(c.link)}" target="_blank" rel="noopener" data-abrir>#${esc(c.numero)}</a></td>
+      <td>${c.parceiro ? `<span class="ch-parceiro">${esc(c.parceiro)}</span>` : ""}</td>
+      <td><div class="ch-titulo-curto" title="${esc(c.titulo || c.titulo_portal || "")}">${esc(c.titulo || c.titulo_portal || "(ainda não lido)")}</div></td>
+      <td><span class="ch-status ${classeStatus(c)}">${esc(c.status_txt)}</span></td>
+      <td>${esc(c.etapa || "")}</td>
+      <td>${c.status_resolvido ? `<span class="ch-resolvido mini ${corResolvido(c.status_resolvido)}">${esc(c.status_resolvido)}</span>` : ""}</td>
+      <td style="white-space:nowrap">${c.atualizado_txt ? `${esc(c.atualizado_txt.slice(0, 10))}${dias != null ? ` <span class="ch-meta">(${dias}d)</span>` : ""}` : ""}</td>
+      <td>${c.sinais.length ? `<div class="ch-sinais">${c.sinais.map((s) => `<span class="ch-sinal ${s}">${ROT[s]}</span>`).join("")}</div>` : ""}</td>
+      <td style="white-space:nowrap">${esc(c.proximo || "")}</td></tr>`;
+  }
+
   function desenhar() {
     desenharFiltros();
+    document.querySelectorAll("#vistas [data-vista]").forEach((b) => b.classList.toggle("ativo", b.dataset.vista === vista));
     const f = (FILTROS.find((x) => x[0] === filtro) || FILTROS[0])[2];
     const lista = chamados.filter(f);
-    $("#lista").innerHTML = lista.map(cartao).join("") || `<div class="ch-vazio">${chamados.length ? "Nada neste filtro. 👍" : "Nenhum chamado cadastrado ainda."}</div>`;
+    const vazio = `<div class="ch-vazio">${chamados.length ? "Nada neste filtro. 👍" : "Nenhum chamado cadastrado ainda."}</div>`;
+    if (vista === "resumo") {
+      $("#lista").className = "ch-resumo";
+      $("#lista").innerHTML = lista.length ? `<table><thead><tr><th>Chamado</th><th>Parceiro</th><th>Assunto</th><th>Status</th><th>Etapa</th><th>Status Resolvido</th><th>Última mov.</th><th>Atenção</th><th>Próximo</th></tr></thead><tbody>${lista.map(linhaResumo).join("")}</tbody></table>` : vazio;
+      $("#lista").querySelectorAll("tr[data-n] [data-abrir]").forEach((a) => {
+        const n = a.closest("tr").dataset.n;
+        a.onclick = () => { if (chamados.find((x) => x.numero === n)?.sinais.includes("novidade")) setTimeout(async () => { try { await post("/api/chamados/visto", { numero: n }); await carregar(); } catch (e) { toast(e.message, "erro"); } }, 500); };
+      });
+      return;
+    }
+    $("#lista").className = "ch-lista";
+    $("#lista").innerHTML = lista.map(cartao).join("") || vazio;
     $("#lista").querySelectorAll(".ch-card").forEach(ligar);
   }
+  document.querySelectorAll("#vistas [data-vista]").forEach((b) => b.onclick = () => {
+    vista = b.dataset.vista;
+    try { localStorage.setItem("bpms-chamados-vista", vista); } catch (e) { /* sem storage */ }
+    desenhar();
+  });
 
   async function salvar(n, campos) {
     try { const c = await post("/api/chamados/editar", { numero: n, ...campos }); Object.assign(chamados.find((x) => x.numero === n), c); desenhar(); }

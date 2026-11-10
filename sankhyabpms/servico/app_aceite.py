@@ -5,11 +5,13 @@ Aceite de OS (aceite_os/enviar_aceite_os.py) -- mesmo fluxo da tela_aceite_os.py
 e-mail do Experience para os aprovadores (sem volta), FAP a FAP, com a
 reconferência que o próprio motor já faz em enviar_fap.
 """
-from datetime import date, timedelta
+import json
+import os
+from datetime import date, datetime, timedelta
 
-from nucleo import GERENTE, PASTAS, ErroUsuario, exigir_confirmacao, marcar_uso, periodo_br, rota
+from nucleo import GERENTE, PASTA_DADOS, PASTAS, ErroUsuario, exigir_confirmacao, marcar_uso, periodo_br, rota
 
-ESTADO = {"token": None, "resultados": {}}
+ESTADO = {"token": None, "resultados": {}, "revisado": False, "sem_referencia": {}}
 
 
 def _core():
@@ -147,6 +149,8 @@ def conferir(req):
         _conferir_horarios(token, res, t.log)
         verificar = sum(1 for r in res for o in r["os"] if o.get("_alertas"))
         ESTADO["resultados"] = {r["fap"]: r for r in res}
+        ESTADO["sem_referencia"] = {}
+        ESTADO["revisado"] = False  # 10/11/2026: toda conferência nova exige nova verificação dos textos antes do envio
         t.adicionar_arquivo("Prévia (.csv)", core.salvar_csv(res))
         prontas = sum(1 for r in res if r["os"] and not r["bloqueios"])
         bloq = sum(1 for r in res if r["bloqueios"])
@@ -161,10 +165,268 @@ def conferir(req):
     return 200, {"tarefa": t.id}
 
 
+# ---------------------------------------------------------------- revisão do texto da Solução (10/11/2026)
+MARCADOR_SOLUCAO = "--- Informações Adicionais ---"
+LIMITE_SOLUCAO = 8000
+
+
+def _localizar_os(fap, oid):
+    r = ESTADO["resultados"].get(str(fap))
+    o = next((x for x in (r["os"] if r else []) if str(x["id"]) == str(oid)), None)
+    if not o or r["bloqueios"]:
+        raise ErroUsuario("Esta OS não está na última conferência como pronta. Clique em Conferir de novo.")
+    return r, o
+
+
+@rota("POST", "/api/aceite/revisar-textos")
+def revisar_textos(req):
+    """Só lê: passa o corretor local nas Soluções da última conferência."""
+    textos = {f"{r['fap']}|{o['id']}": o.get("_solucao") or "" for r in ESTADO["resultados"].values() if not r["bloqueios"] for o in r["os"]}
+    if not textos:
+        raise ErroUsuario("Clique em Conferir antes de revisar os textos.")
+
+    def trabalho(t):
+        import revisor_texto
+        t.log(f"Revisando {len(textos)} texto(s) neste computador. Nada é gravado nesta etapa.")
+        revisoes = revisor_texto.revisar_varios(textos, t.log)
+        for k, v in revisoes.items():
+            v["original"] = textos[k]
+        t.log("Comparando a Solução com o título e o Detalhamento das tarefas (só leitura)...")
+        aderencias, sem_referencia = _aderencias(_login(_core(), t), t, revisoes)
+        ESTADO["sem_referencia"] = sem_referencia
+        ESTADO["revisado"] = True
+        marcar_uso("aceite")
+        return {"mensagem": f"Revisão concluída: {len(revisoes)} de {len(textos)} texto(s) com ajuste ou ponto a conferir e "
+                            f"{len(aderencias)} para conferir a aderência à demanda. Nada foi gravado.",
+                "resultado": {"revisoes": revisoes, "aderencias": aderencias, "sem_referencia": sem_referencia}}
+
+    t = GERENTE.iniciar("aceite_revisar", "Aceite de OS - revisão dos textos", trabalho, pasta=PASTAS["aceite"])
+    return 200, {"tarefa": t.id}
+
+
+def _aderencias(token, t, revisoes):
+    """
+    Aderência da Solução à demanda (10/11/2026): acha a tarefa pela TAG do lançamento original e compara com o título
+    e o Detalhamento. Só lê. Falha em uma OS não derruba a revisão.
+    """
+    import requests
+    from concurrent.futures import ThreadPoolExecutor
+    import aderencia_texto as AT
+    from app_conferencia import _tag_do_lancamento
+    from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
+    cache, alvos, sem_tarefa = {}, [], 0
+    for r in ESTADO["resultados"].values():
+        if r["bloqueios"]:
+            continue
+        for o in r["os"]:
+            pedido = {"implantation_id": r["impl_id"], "person_name": o.get("_executante"), "application_code": o.get("application_code")}
+            try:
+                tag = _tag_do_lancamento(token, cache, pedido, o.get("date_done"), o.get("_inicio"))
+            except Exception:
+                tag = None
+            if tag and (o.get("_solucao") or "").strip():
+                alvos.append((f"{r['fap']}|{o['id']}", tag, o["_solucao"]))
+            else:
+                sem_tarefa += 1
+
+    def ler(item):
+        k, tag, sol = item
+        try:
+            resp = requests.get(f"{CLICKUP_API}/task/{tag}", headers=CLICKUP_HEADERS, timeout=20)
+            resp.raise_for_status()
+            tarefa = resp.json()
+        except requests.RequestException:
+            return k, None, sol
+        det = next((c.get("value") or "" for c in tarefa.get("custom_fields") or [] if c.get("name") == "Detalhamento"), "")
+        return k, (tarefa.get("name") or "", str(det or ""), tarefa.get("url") or f"https://app.clickup.com/t/{tag}", tag), sol
+
+    termos = AT.termos()
+    saida, sem_ref, contagem = {}, {}, {"conferir": 0, "ok": 0, "ignorar": 0, "falha": 0}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for k, dados, sol in ex.map(ler, alvos):
+            if dados is None:
+                contagem["falha"] += 1
+                continue
+            situacao = AT.avaliar(dados[0], dados[1], sol, termos)
+            contagem[situacao] += 1
+            if situacao == "conferir":
+                saida[k] = {"titulo": dados[0], "detalhamento": dados[1], "url": dados[2]}
+            elif situacao == "ignorar":
+                texto_base = (revisoes.get(k) or {}).get("sugerido") or sol
+                novo_titulo, novo_detalhe = AT.sugerir(dados[0], dados[1], texto_base, termos)
+                sem_ref[k] = {"titulo": dados[0], "detalhamento": dados[1], "url": dados[2], "tarefa": dados[3], "motivo": AT.motivo_sem_referencia(dados[0], dados[1], termos),
+                              "sugestao_titulo": novo_titulo, "sugestao_detalhamento": novo_detalhe}
+    t.log(f"Aderência: {contagem['conferir']} a conferir, {contagem['ok']} ok, {contagem['ignorar']} sem boa referência, "
+          f"{sem_tarefa} sem tarefa localizada, {contagem['falha']} com falha de leitura.")
+    return saida, sem_ref
+
+
+def _dados_da_gravacao(token, core, r, o, original, texto):
+    """Confere se a OS pode ser alterada e monta o corpo igual ao da tela do Experience. Não grava nada."""
+    from experience_api.orders import extrair_solucao, get_order_tasks, search_orders
+    oid = int(o["id"])
+    chk = core.post_com_retry(f"{core._BASE}/orders/check-edit", core.auth_headers(token), {"order_id": oid})
+    if core._erro(chk):
+        raise ErroUsuario(f"O Experience não liberou a edição: {core._erro(chk)}")
+    c = chk.get("data") or {}
+    motivos = [m for m, ok in (("o status do projeto não permite", c.get("impl_status_check")), ("o aceite não permite", c.get("acpt_status_check")),
+                               ("a OS foi criada há mais de 30 dias", c.get("created_30days_check"))) if not ok]
+    if c.get("accept_id") or c.get("accept_status"):
+        motivos.append("a OS já tem aceite gerado")
+    if c.get("has_integrated_orders") or c.get("was_integrated") or c.get("was_disputed"):
+        motivos.append("o Experience marcou a OS como integrada ou contestada, caso ainda não testado")
+    if motivos:
+        raise ErroUsuario("Esta OS não pode ser alterada: " + "; ".join(motivos) + ".")
+    tarefas = get_order_tasks(token, oid) or []
+    if len(tarefas) != 1:
+        raise ErroUsuario(f"Esta OS tem {len(tarefas)} tarefas. Por segurança, corrija direto no Experience.")
+    t = tarefas[0]
+    info = t.get("additional_information") or ""
+    if MARCADOR_SOLUCAO not in info:
+        raise ErroUsuario("Não encontrei o início da Solução nesta OS. Corrija direto no Experience.")
+    if " ".join(extrair_solucao(info).split()) != " ".join((original or "").split()):
+        raise ErroUsuario("O texto desta OS mudou desde a conferência. Clique em Conferir de novo.")
+    data_iso = datetime.strptime(t["date_done"], "%d/%m/%Y").date()
+    linhas = []
+    for integrada in ("S", ""):
+        linhas += search_orders(token, [r["impl_id"]], data_iso.isoformat(), (data_iso + timedelta(days=1)).isoformat(), integrated=integrada) or []
+    ordem = next((x for x in linhas if str(x.get("id") or x.get("order_id")) == str(oid)), None)
+    if not ordem or not ordem.get("order_type_status") or not ordem.get("stage_id"):
+        raise ErroUsuario("Não consegui ler o tipo e a etapa desta OS. Corrija direto no Experience.")
+    return {"date_done": t["date_done"], "order_type": ordem["order_type_status"], "order_id": oid, "hour_to_start": t["hour_to_start"], "hour_to_finish": t["hour_to_finish"],
+            "hour_to_lunch": t.get("hour_to_lunch") or "00:00", "additional_information": info.split(MARCADOR_SOLUCAO, 1)[0] + MARCADOR_SOLUCAO + "\n" + texto,
+            "additional_notes": t.get("additional_notes") or "", "implantation_id": r["impl_id"], "person_id": core.SOLICITANTE_PERSON_ID, "has_order_type_changed": False,
+            "is_accept_os_exclusion_confirmed": False, "accept_os_id": None, "accept_status": None, "stage_id": ordem["stage_id"], "has_integrated_orders": False}
+
+
+CAMPO_OBS_CLICKUP = "3578f234-88e7-4d88-aabe-a61713834101"  # X-Observações OS
+MARCADOR_OBS = "Solução:\n"
+
+
+def _atualizar_observacoes(token, r, o, texto):
+    """
+    10/11/2026 (Fragoso): depois de corrigir a OS, troca só a parte da Solução no X-Observações OS da tarefa, mantendo
+    número da OS, horário e tempo. A OS já está gravada: uma falha aqui vira aviso. Devolve (ok, mensagem).
+    """
+    import re
+    import requests
+    from app_conferencia import _tag_do_lancamento
+    from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
+    pedido = {"implantation_id": r["impl_id"], "person_name": o.get("_executante"), "application_code": o.get("application_code")}
+    try:
+        tag = _tag_do_lancamento(token, {}, pedido, o.get("date_done"), o.get("_inicio"))
+        if not tag:
+            return False, "não localizei a tarefa no ClickUp; ajuste o X-Observações OS à mão"
+        url = f"{CLICKUP_API}/task/{tag}"
+        leitura = requests.get(url, headers=CLICKUP_HEADERS, timeout=20)
+        leitura.raise_for_status()
+        atual = next((c.get("value") or "" for c in leitura.json().get("custom_fields") or [] if c.get("id") == CAMPO_OBS_CLICKUP), "")
+        if not str(atual).strip():
+            return True, "X-Observações OS ainda vazio; a Conferência preenche"
+        num = re.search(r"OS (\d+)\]", atual)
+        if num and str(o.get("numos_sankhya")) != num.group(1):
+            return False, f"o X-Observações OS da tarefa é da OS {num.group(1)}; ajuste à mão"
+        if MARCADOR_OBS not in atual:
+            return False, "o X-Observações OS está em outro formato; ajuste à mão"
+        novo = atual.split(MARCADOR_OBS, 1)[0] + MARCADOR_OBS + texto
+        if novo.strip() == atual.strip():
+            return True, "X-Observações OS já estava igual"
+        grava = requests.post(f"{url}/field/{CAMPO_OBS_CLICKUP}", headers=CLICKUP_HEADERS, json={"value": novo}, timeout=30)
+        grava.raise_for_status()
+        return True, "X-Observações OS atualizado no ClickUp"
+    except requests.RequestException as e:
+        return False, f"falha ao atualizar o ClickUp ({e.__class__.__name__}); ajuste o X-Observações OS à mão"
+
+
+CAMPO_DETALHAMENTO_CLICKUP = "e74bba2f-032d-4e2e-8f37-ec19011312c0"
+
+
+@rota("POST", "/api/aceite/tarefa/ajustar")
+def ajustar_tarefa(req):
+    """Grava no ClickUp o título e o Detalhamento aprovados na tela, tarefa a tarefa. Só muda o que foi alterado."""
+    import requests
+    from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
+    exigir_confirmacao(req)
+    k = f"{req.corpo.get('fap')}|{req.corpo.get('os')}"
+    a = ESTADO["sem_referencia"].get(k)
+    if not a:
+        raise ErroUsuario("Esta tarefa não está na última verificação. Clique em Conferir de novo.")
+    titulo, detalhamento = (req.corpo.get("titulo") or "").strip(), (req.corpo.get("detalhamento") or "").strip()
+    if not titulo or len(titulo) > 200 or len(detalhamento) > LIMITE_SOLUCAO:
+        raise ErroUsuario("Confira o título (até 200 caracteres) e o Detalhamento.")
+    url = f"{CLICKUP_API}/task/{a['tarefa']}"
+
+    def ler():
+        resp = requests.get(url, headers=CLICKUP_HEADERS, timeout=20)
+        resp.raise_for_status()
+        dados = resp.json()
+        return dados.get("name") or "", next((str(c.get("value") or "") for c in dados.get("custom_fields") or [] if c.get("id") == CAMPO_DETALHAMENTO_CLICKUP), "")
+
+    try:
+        nome_atual, det_atual = ler()
+        if nome_atual != a["titulo"] or det_atual.strip() != a["detalhamento"].strip():
+            raise ErroUsuario("A tarefa mudou no ClickUp desde a verificação. Clique em Conferir de novo.")
+        mudou = []
+        if detalhamento != det_atual.strip():
+            requests.post(f"{url}/field/{CAMPO_DETALHAMENTO_CLICKUP}", headers=CLICKUP_HEADERS, json={"value": detalhamento}, timeout=30).raise_for_status()
+            mudou.append("Detalhamento")
+        if titulo != nome_atual:
+            requests.put(url, headers=CLICKUP_HEADERS, json={"name": titulo}, timeout=30).raise_for_status()
+            mudou.append("título")
+        if not mudou:
+            raise ErroUsuario("Nada foi alterado.")
+        nome_novo, det_novo = ler()
+    except requests.RequestException as e:
+        raise ErroUsuario(f"O ClickUp recusou a alteração ({e.__class__.__name__}). Confira a tarefa antes de tentar de novo.")
+    if nome_novo != titulo or det_novo.strip() != detalhamento:
+        raise ErroUsuario("O ClickUp respondeu OK, mas o texto lido de volta é diferente. Confira a tarefa.")
+    with open(os.path.join(PASTA_DADOS, "tarefa_ajustes.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "tarefa": a["tarefa"], "chave": k, "titulo_antes": a["titulo"], "titulo_depois": titulo,
+                            "detalhamento_antes": a["detalhamento"], "detalhamento_depois": detalhamento}, ensure_ascii=False) + "\n")
+    ESTADO["sem_referencia"].pop(k, None)
+    marcar_uso("aceite")
+    return 200, {"mensagem": f"{' e '.join(mudou).capitalize()} atualizado(s) no ClickUp."}
+
+
+@rota("POST", "/api/aceite/solucao/gravar")
+def gravar_solucao(req):
+    """Grava no Experience o texto aprovado na tela. Não gera aceite nem envia e-mail."""
+    exigir_confirmacao(req)
+    original, texto = req.corpo.get("original") or "", (req.corpo.get("texto") or "").strip()
+    if not texto or len(texto) > LIMITE_SOLUCAO:
+        raise ErroUsuario(f"O texto precisa ter de 1 a {LIMITE_SOLUCAO} caracteres.")
+    if texto == original.strip():
+        raise ErroUsuario("O texto não mudou.")
+    r, o = _localizar_os(req.corpo.get("fap"), req.corpo.get("os"))
+    import requests
+    from experience_api.orders import extrair_solucao, get_order_tasks
+    from credenciais import EXPERIENCE_USER, EXPERIENCE_PASS
+    core = _core()
+    token = core.exp.login(EXPERIENCE_USER, EXPERIENCE_PASS)
+    if not token:
+        raise ErroUsuario("Falha no login do Experience.")
+    corpo = _dados_da_gravacao(token, core, r, o, original, texto)
+    resp = requests.post(f"{core._BASE}/orders/update", headers=core.auth_headers(token), json=corpo, timeout=60)  # sem repetição automática
+    body = core._safe_json(resp)
+    if resp.status_code != 200 or core._erro(body):
+        raise ErroUsuario(f"O Experience recusou a alteração: {core._erro(body) or resp.status_code}. Nada foi registrado como corrigido.")
+    agora = extrair_solucao((get_order_tasks(token, int(o["id"])) or [{}])[0].get("additional_information"))
+    if " ".join(agora.split()) != " ".join(texto.split()):
+        raise ErroUsuario("O Experience respondeu OK, mas o texto lido de volta é diferente. Confira esta OS na tela do Experience.")
+    o["_solucao"] = agora
+    clickup_ok, clickup_msg = _atualizar_observacoes(token, r, o, agora)
+    with open(os.path.join(PASTA_DADOS, "solucao_correcoes.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "fap": r["fap"], "order_id": o["id"], "os": o.get("numos_sankhya"), "antes": original, "depois": agora, "clickup": clickup_msg}, ensure_ascii=False) + "\n")
+    marcar_uso("aceite")
+    return 200, {"solucao": agora, "clickup_ok": clickup_ok, "mensagem": f"Solução da OS {o.get('numos_sankhya')} corrigida no Experience. {clickup_msg}. Nenhum aceite foi gerado."}
+
+
 @rota("POST", "/api/aceite/enviar")
 def enviar(req):
     """Um aceite por OS (09/10/2026): itens = [{"fap": "27956", "os": <id da OS no Experience>}, ...]."""
     exigir_confirmacao(req)
+    if not ESTADO.get("revisado"):
+        raise ErroUsuario("A verificação dos textos precisa terminar antes do envio. Aguarde ou clique em Revisar textos.")
     itens = req.corpo.get("itens") or []
     if not itens:
         raise ErroUsuario("Nenhuma OS marcada.")

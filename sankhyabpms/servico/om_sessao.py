@@ -232,7 +232,8 @@ class _Om:
         if not self.sessao or getattr(self, "_aviso_respondido_em", None) == self.sessao["mgeSession"]:
             return
         agora = time.time()
-        if agora - self.sessao.get("quando", 0) > 120 or agora - getattr(self, "_ultimo_aviso", 0) < 2:
+        # 09/11/2026: 15 min em vez de 2: enquanto a leitura dos Chamados ocupa o navegador, esta checagem não roda.
+        if agora - self.sessao.get("quando", 0) > 900 or agora - getattr(self, "_ultimo_aviso", 0) < 2:
             return
         self._ultimo_aviso = agora
         for pagina in self._ctx.pages:
@@ -609,7 +610,11 @@ class _Om:
             comentarios = json.loads(r2.text()) if r2.status == 200 else {}
             corpo1 = json.loads(r1.text())
             req = corpo1.get("request") or {}
-            req["status_label"] = rotulo_status(req)
+            req["status_label"] = rotulo_por_api(req)
+            req["etapa"] = campo_por_api(req, "Etapa")
+            req["status_resolvido"] = campo_por_api(req, "Status Resolvido")  # 10/11/2026 (Fragoso)
+            req["numero_os"] = campo_por_api(req, "Numero OS")                 # 10/11/2026 (Fragoso)
+            req["data_execucao"] = campo_por_api(req, "Data da Execução")     # 10/11/2026 (Fragoso)
             # 06/11/2026 (Fragoso): quem é quem no chamado (solicitante, atribuído, você) para distinguir quem respondeu
             usuarios = {u.get("id"): u for u in (corpo1.get("users") or []) + (comentarios.get("users") or []) if u.get("id")}
             return {"request": req, "comments": comentarios.get("comments") or [], "users": list(usuarios.values()),
@@ -624,39 +629,65 @@ class _Om:
                     self._eu_portal = None
             return self._eu_portal
 
-        def rotulo_status(req):
-            """06/11/2026 (Fragoso): o rótulo que o portal mostra (status personalizado, ex.: "resolvido - aguardando
-            validação do cliente"). Pela API de status personalizados; se não der, pela própria tela do chamado."""
+        def rotulo_por_api(req):
+            """Rótulo do status personalizado pela API do portal, a mesma sessão das demais leituras."""
             cid = req.get("custom_status_id")
-            if cid:
-                try:
-                    r = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/custom_statuses/{cid}.json", timeout=30000)
-                    if r.status == 200:
-                        cs = json.loads(r.text()).get("custom_status") or {}
-                        rot = cs.get("end_user_label") or cs.get("agent_label")
-                        if rot:
-                            return rot
-                except Exception:
-                    pass
-            # 06/11/2026 (Fragoso: "fica abrindo várias telas"): lê o HTML da tela do chamado sem abrir aba,
-            # pela mesma sessão (cookies) do navegador da Central. O rótulo vem pronto no HTML do portal.
+            if not cid:
+                self._log_login(f"chamado {numero}: portal não informou custom_status_id")
+                return ""
             try:
-                r = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/hc/pt-br/requests/{numero}", timeout=60000)
+                r = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/custom_statuses/{cid}.json", timeout=30000)
                 if r.status == 200:
-                    m = re.search(r'class="[^"]*status-label[^"]*"[^>]*>\s*([^<]+?)\s*<', r.text())
-                    if m:
-                        return html_mod.unescape(m.group(1)).strip()
-            except Exception:
-                pass
+                    cs = json.loads(r.text()).get("custom_status") or {}
+                    return cs.get("end_user_label") or cs.get("agent_label") or ""
+                self._log_login(f"chamado {numero}: custom_statuses respondeu HTTP {r.status}")
+            except Exception as e:
+                self._log_login(f"chamado {numero}: custom_statuses falhou ({e.__class__.__name__})")
             return ""
 
+        def campo_por_api(req, titulo):
+            """
+            Campo do chamado pelo título no portal, pela API (Etapa em 09/11/2026, Status Resolvido em 10/11/2026).
+            A leitura da tela num Chrome invisível foi retirada: o portal responde com a verificação anti-robô do
+            Cloudflare, que a Central não contorna. A lista de campos é lida uma vez por sessão.
+            """
+            valores = {c.get("id"): c.get("value") for c in req.get("custom_fields") or []}
+            if not valores:
+                self._log_login(f"chamado {numero}: portal não informou custom_fields")
+                return ""
+            try:
+                if getattr(self, "_campos_portal", None) is None:
+                    r = self._ctx.request.get(f"{self.PORTAL_CHAMADOS}/api/v2/ticket_fields.json",
+                                              params={"locale": "pt-br"}, timeout=30000)
+                    if r.status != 200:
+                        self._log_login(f"chamado {numero}: ticket_fields respondeu HTTP {r.status}")
+                        return ""
+                    self._campos_portal = json.loads(r.text()).get("ticket_fields") or []
+                alvo = titulo.strip().lower()
+                campo = next((c for c in self._campos_portal
+                              if alvo in ((c.get("title_in_portal") or "").strip().lower(), (c.get("title") or "").strip().lower())), None)
+                if not campo:
+                    self._log_login(f"chamado {numero}: campo {titulo} não veio em ticket_fields ({len(self._campos_portal)} campos)")
+                    return ""
+                valor = valores.get(campo.get("id"))
+                opcoes = {o.get("value"): o.get("name") for o in campo.get("custom_field_options") or []}
+                return opcoes.get(valor) or (valor if isinstance(valor, str) else "") or ""
+            except Exception as e:
+                self._log_login(f"chamado {numero}: leitura do campo {titulo} falhou ({e.__class__.__name__})")
+                return ""
+
         def fazer():
+            # 09/11/2026 (print do Fragoso): a leitura dos Chamados abria a janela do OM na frente do usuário.
+            janela_nova = self._ctx is None
             self._abrir()
+            if janela_nova:
+                self._ocultar_janela()
             dados, status = api()
             if dados is not None:
                 return dados
             if status == 404:
                 raise RuntimeError("Chamado não encontrado no portal (ou sem acesso para este login).")
+            self._janela("normal")   # o portal pediu login: aí a janela precisa aparecer
             pagina = self._ctx.new_page()
             try:
                 pagina.goto(f"{self.PORTAL_CHAMADOS}/hc/pt-br/requests/{numero}", wait_until="load", timeout=60000)
