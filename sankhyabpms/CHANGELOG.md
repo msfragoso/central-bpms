@@ -8,6 +8,11 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.15.0 — 10/11/2026
+- Chat x OS: aceita o backup de mensagens do Total Chat e passa a medir o tempo ativo de cada atendente pelas
+  mensagens que ele escreveu, sem contar o almoço (12h às 14h) nem pausas de mais de 60 minutos sem escrever
+  em nenhum chat. Sem o backup do mês, segue o critério anterior. O backup fica só no computador.
+
 ## 1.14.0 — 10/11/2026
 - Nova tela Chat x OS: cruza os atendimentos do Total Chat com as OS do Sankhya-OM no mês e gera PDF e
   Excel com o tempo de conversa, quanto dele tem OS vinculada, índice de apontamento por atendente,

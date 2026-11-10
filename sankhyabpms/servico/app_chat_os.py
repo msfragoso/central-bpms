@@ -57,7 +57,48 @@ def _historico():
 @rota("GET", "/api/chat-os/opcoes")
 def opcoes(req):
     meses = [{"mes": m, "arquivo": os.path.basename(c), "linhas": n} for m, (c, n) in sorted(_csvs().items())]
-    return 200, {"meses": meses, "historico": _historico()}
+    return 200, {"meses": meses, "historico": _historico(), "mensagens": _mensagens()}
+
+
+PASTA_MENSAGENS = os.path.join(PASTA_DADOS, "mensagens")
+
+
+def _mensagens():
+    """Backups de mensagens do Total Chat guardados (só a coluna de horário, para mostrar o período)."""
+    saida = []
+    for c in sorted(glob.glob(os.path.join(PASTA_MENSAGENS, "*.csv"))):
+        try:
+            d = pd.read_csv(c, sep=";", encoding="utf-8-sig", dtype=str, keep_default_na=False, usecols=["Horario"])
+            t = pd.to_datetime(d["Horario"], format="%d/%m/%Y %H:%M:%S", errors="coerce").dropna()
+            saida.append({"arquivo": os.path.basename(c), "mensagens": int(len(t)), "de": f"{t.min():%d/%m/%Y}" if len(t) else "", "ate": f"{t.max():%d/%m/%Y}" if len(t) else ""})
+        except (ValueError, UnicodeDecodeError):
+            continue
+    return saida
+
+
+@rota("POST", "/api/chat-os/enviar-mensagens")
+def enviar_mensagens(req):
+    """10/11/2026: backup de mensagens do Total Chat (Nome;Telefone;...;Texto;...;Horario;...). Fica só neste computador."""
+    import base64
+    import re
+    nome = re.sub(r"[^\w.\- ()]", "_", os.path.basename(req.corpo.get("nome") or "mensagens.csv"))[:120]
+    if not nome.lower().endswith(".csv"):
+        raise ErroUsuario("Envie o .csv do backup de mensagens do Total Chat.")
+    try:
+        conteudo = base64.b64decode(req.corpo.get("conteudo_b64") or "", validate=True)
+    except ValueError:
+        raise ErroUsuario("Arquivo inválido.")
+    cabecalho = conteudo[:400].decode("utf-8-sig", errors="ignore").splitlines()[0] if conteudo else ""
+    if not all(c in cabecalho.split(";") for c in ("Telefone", "Texto", "Horario")):
+        raise ErroUsuario("Este não parece o backup de mensagens: faltam as colunas Telefone, Texto e Horario.")
+    os.makedirs(PASTA_MENSAGENS, exist_ok=True)
+    destino, n = os.path.join(PASTA_MENSAGENS, nome), 1
+    while os.path.exists(destino):
+        base, ext = os.path.splitext(nome)
+        destino, n = os.path.join(PASTA_MENSAGENS, f"{base} ({n}){ext}"), n + 1
+    with open(destino, "wb") as f:
+        f.write(conteudo)
+    return 200, {"arquivo": os.path.basename(destino)}
 
 
 @rota("POST", "/api/chat-os/gerar")
@@ -79,7 +120,7 @@ def gerar(req):
         om_df, _ = app_om.buscar_os(ini, fim, t.log)
         t.log("Cruzando os atendimentos com as OS...")
         hist = _historico()
-        ind, pdf, xlsx = m.gerar(csvs[mes_txt][0], om_df, mes, PASTA_SAIDA, historico=hist, log=t.log)
+        ind, pdf, xlsx = m.gerar(csvs[mes_txt][0], om_df, mes, PASTA_SAIDA, historico=hist, log=t.log, pasta_mensagens=PASTA_MENSAGENS)
         hist[mes_txt] = ind
         gravar_json_dados(ARQ_HISTORICO, hist)
         t.adicionar_arquivo("Relatório (PDF)", pdf)

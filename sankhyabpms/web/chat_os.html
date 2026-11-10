@@ -36,6 +36,12 @@
           <tbody id="corpo-meses"><tr><td colspan="3" class="vazio-tabela">Carregando…</td></tr></tbody>
         </table>
       </div>
+      <h2 style="margin-top:16px">Backup de mensagens</h2>
+      <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px">Com ele, o tempo é medido pelas mensagens de cada atendente. Pode enviar o backup inteiro: a Central usa só o mês escolhido. Fica só neste computador.</p>
+      <div class="campos">
+        <div class="campo"><label for="arquivo-msg">Enviar backup de mensagens</label><input type="file" id="arquivo-msg" accept=".csv"></div>
+      </div>
+      <div class="ajuda" id="lista-msg" style="font-size:12px;color:var(--suave);margin-top:6px"></div>
     </section>
 
     <section class="card faixa">
@@ -55,7 +61,7 @@
 
   <section class="card faixa" style="margin-top:16px">
     <h2>Evolução entre meses</h2>
-    <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px">Tempo de conversa: do início ao fim do atendimento, simultâneos divididos e nada depois das 18h se a conversa não fechou no dia.</p>
+    <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px">Tempo: com o backup de mensagens, pelo tempo ativo de cada atendente (sem almoço das 12h às 14h, teto de 60 min sem escrever); sem ele, do início ao fim do atendimento.</p>
     <div class="tabela-caixa">
       <table>
         <thead><tr><th>Mês</th><th class="centro">Atend. de parceiros</th><th class="centro">Horas de conversa</th><th class="centro">Tempo com OS vinculada</th><th class="centro">Horas sem OS comprovada</th><th class="centro">Índice de apontamento</th><th class="centro">Horas de OS</th></tr></thead>
@@ -87,6 +93,9 @@
       $("#mes").innerHTML = meses.slice().reverse().map((m) => `<option value="${esc(m.mes)}">${esc(rotulo(m.mes))}</option>`).join("");
       if (atual) $("#mes").value = atual;
       $("#btn-gerar").disabled = !meses.length;
+      $("#lista-msg").innerHTML = (r.mensagens || []).length
+        ? r.mensagens.map((x) => `${esc(x.arquivo)}: ${x.mensagens} mensagens, de ${esc(x.de)} a ${esc(x.ate)}`).join("<br>")
+        : "Nenhum backup ainda: o tempo vem do início e do fim de cada atendimento.";
       const h = Object.keys(r.historico).sort().reverse();
       $("#corpo-hist").innerHTML = h.length
         ? h.map((k) => { const x = r.historico[k]; return `<tr><td><b>${esc(x.rotulo)}</b></td><td class="centro">${x.atendimentos_parceiros}</td><td class="centro">${num(x.horas_parceiros)}</td><td class="centro">${pct(x.pct_com_os)}</td><td class="centro">${num(x.horas_sem_os)}</td><td class="centro">${pct(x.indice_apontamento)}</td><td class="centro">${num(x.horas_os)}</td></tr>`; }).join("")
@@ -114,6 +123,17 @@
         toast(`${r.arquivo}: ${r.rotulo}, ${r.linhas} atendimentos.`, "ok");
       } catch (err) { toast(`${f.name}: ${err.message}`, "erro"); }
     }
+    e.target.value = "";
+    carregar();
+  };
+
+  $("#arquivo-msg").onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const r = await post("/api/chat-os/enviar-mensagens", { nome: f.name, conteudo_b64: await arquivoBase64(f) });
+      toast(`${r.arquivo} guardado. Gere o mês de novo para usar o tempo pelas mensagens.`, "ok");
+    } catch (err) { toast(`${f.name}: ${err.message}`, "erro"); }
     e.target.value = "";
     carregar();
   };
