@@ -8,6 +8,13 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.16.0 — 11/11/2026
+- Conferência de OS: botão novo "📊 Prazo de apontamento (HTML)". Lê no Sankhya-OM as OS do período e mostra,
+  por consultor da unidade, quantos dias passam entre a execução e o fechamento da OS: média em dias úteis e
+  corridos, mediana, máximo, % dentro do prazo e média por mês. Gera um HTML5, que pode ser impresso em PDF,
+  e um Excel com fórmulas. Lançamentos em planilha não entram. A lista da unidade, o prazo e os feriados
+  ficam só no computador. Só leitura.
+
 ## 1.15.0 — 10/11/2026
 - Chat x OS: aceita o backup de mensagens do Total Chat e passa a medir o tempo ativo de cada atendente pelas
   mensagens que ele escreveu, sem contar o almoço (12h às 14h) nem pausas de mais de 60 minutos sem escrever

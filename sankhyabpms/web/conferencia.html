@@ -63,6 +63,7 @@
       </div>
       <div class="acoes">
         <button class="btn" id="btn-conferir">Iniciar conferência</button>
+        <button class="btn secundario" id="btn-prazo" type="button" title="Média de dias entre a execução e o fechamento das OS no Sankhya-OM, por consultor da unidade, no período acima. Só leitura.">📊 Prazo de apontamento (HTML)</button>
         <span class="espaco"></span>
         <button class="btn perigo" id="btn-borracha">🧹 Passar borracha</button>
       </div>
@@ -314,6 +315,19 @@
     } catch (e) { toast(e.message, "erro"); travar(false); }
   };
 
+  // 11/11/2026: indicador de prazo de apontamento (OM, só leitura). Usa o período da tela.
+  $("#btn-prazo").onclick = async () => {
+    if (!periodoOk()) return;
+    if (!await BPMS.garantirOm({ precisaConsulta: true })) return;
+    await statusOm();
+    travar(true); $("#btn-prazo").disabled = true;
+    $("#pdf-linha").classList.add("oculto");
+    try {
+      BPMS.iniciar("/api/om/indicador-prazo", { de: $("#de").value, ate: $("#ate").value, destino: $("#destino").value }, el,
+        (t) => { $("#btn-prazo").disabled = false; aoTerminar(t); });
+    } catch (e) { toast(e.message, "erro"); travar(false); $("#btn-prazo").disabled = false; }
+  };
+
   $("#btn-borracha").onclick = async () => {
     if (!periodoOk()) return;
     if (!pelaApi() && !$("#clickup").files[0]) return toast("Selecione o CSV do ClickUp.", "erro");
@@ -335,7 +349,7 @@
       $("#destino").value = o.destino;
       if (!o.sankhya_api) $("#aviso-api").classList.remove("oculto");
     } catch (e) { toast(e.message, "erro"); }
-    BPMS.retomar(["conferencia", "borracha"], el, aoTerminar, () => travar(true));
+    BPMS.retomar(["conferencia", "borracha", "om_indicador_prazo"], el, aoTerminar, () => travar(true));
   })();
 })();
 </script>

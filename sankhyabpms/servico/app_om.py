@@ -63,9 +63,9 @@ def buscar_os(data_ini, data_fim, log=print):
 TETO_OM = 150
 
 
-def _consultar_bloco(codusus, data_ini, data_fim):
+def _consultar_bloco(codusus, data_ini, data_fim, campos=None):
     corpo = {
-        "dataSetID": "001", "entityName": "ItemOrdemServico", "standAlone": True, "fields": CAMPOS,
+        "dataSetID": "001", "entityName": "ItemOrdemServico", "standAlone": True, "fields": campos or CAMPOS,
         "tryJoinedFields": True, "parallelLoader": True,
         "crudListener": "br.com.sankhya.mgeserv.model.helpper.OSCRUDListener",
         "criteria": {
@@ -84,7 +84,7 @@ def _consultar_bloco(codusus, data_ini, data_fim):
     return corpo_resp.get("result") or []
 
 
-def _buscar_em_blocos(codusus, data_ini, data_fim, log):
+def _buscar_em_blocos(codusus, data_ini, data_fim, log, campos=None):
     from datetime import timedelta
     linhas, vistos = [], set()
     pendentes = []
@@ -94,7 +94,7 @@ def _buscar_em_blocos(codusus, data_ini, data_fim, log):
         d += timedelta(days=7)
     while pendentes:
         a, b = pendentes.pop(0)
-        lote = _consultar_bloco(codusus, a, b)
+        lote = _consultar_bloco(codusus, a, b, campos)
         if len(lote) >= TETO_OM and a < b:
             meio = a + timedelta(days=(b - a).days // 2)
             pendentes[:0] = [(a, meio), (meio + timedelta(days=1), b)]
@@ -263,4 +263,78 @@ def relatorio_parceiro(req):
                 "resultado": {"pasta": dados_arquivo("relatorios"), "arquivo": base}}
 
     t = GERENTE.iniciar("om_relatorio", f"OS do parceiro {parceiro} (OM, só leitura)", trabalho)
+    return 200, {"tarefa": t.id}
+
+
+# ----------------------------------------------------------------------------
+# Prazo de apontamento (11/11/2026, pedido do Fragoso): exporta as OS do período
+# com as datas de execução e de fechamento, para medir quantos dias cada
+# consultor leva para apontar. Só leitura. O campo de fechamento é descoberto
+# na hora (o OM recusa campo que não existe), e o arquivo diz qual foi usado.
+# ----------------------------------------------------------------------------
+CAMPOS_DATA_CANDIDATOS = ["OrdemServico.DTFECHAMENTO", "OrdemServico.DHFECHAMENTO", "TERMEXEC", "DHENTRADA",
+                          "DTENTRADA", "OrdemServico.DHCHAMADA", "OrdemServico.DTALTER", "DTALTER"]
+
+
+@rota("POST", "/api/om/prazo-apontamento")
+def prazo_apontamento(req):
+    import os
+    import pandas as pd
+    from nucleo import GERENTE, dados_arquivo, periodo_br
+    ini, fim = periodo_br(req.corpo.get("de"), req.corpo.get("ate"))
+    if OM.status().get("estado") != "conectado":
+        raise ErroUsuario("O Sankhya-OM não está conectado. Conecte pela tela da Conferência de OS.")
+
+    def trabalho(t):
+        codusus = executantes()
+        validos = []
+        for c in CAMPOS_DATA_CANDIDATOS:
+            try:
+                _consultar_bloco(codusus, fim, fim, CAMPOS + [c])
+                validos.append(c)
+            except Exception as e:
+                t.log(f"Campo {c} não aceito pelo OM ({str(e)[:80]}).")
+        t.log(f"Campos de data aceitos: {', '.join(validos) or 'nenhum'}")
+        campos = CAMPOS + validos
+        linhas = _buscar_em_blocos(codusus, ini, fim, t.log, campos)
+        df = pd.DataFrame(linhas, columns=campos[:len(linhas[0])] if linhas else campos)
+        df = df.drop(columns=["SOLUCAO"], errors="ignore")
+        os.makedirs(dados_arquivo("relatorios"), exist_ok=True)
+        arq = os.path.join(dados_arquivo("relatorios"), f"OM prazo apontamento {ini:%d-%m-%Y} a {fim:%d-%m-%Y}.xlsx")
+        df.to_excel(arq, index=False)
+        t.adicionar_arquivo("OS com datas (.xlsx)", arq)
+        return {"mensagem": f"{len(df)} itens de OS exportados. Campos de data: {', '.join(validos)}. Nada foi alterado no OM.",
+                "resultado": {"arquivo": arq, "campos": validos}}
+
+    t = GERENTE.iniciar("om_prazo", "Prazo de apontamento (OM, só leitura)", trabalho)
+    return 200, {"tarefa": t.id}
+
+
+@rota("POST", "/api/om/indicador-prazo")
+def indicador_prazo(req):
+    """Indicador de prazo de apontamento (HTML5 + Excel), botão da tela Conferência de OS. Só leitura."""
+    from nucleo import GERENTE, periodo_br
+    import os
+    import indicador_prazo as ind
+    ini, fim = periodo_br(req.corpo.get("de"), req.corpo.get("ate"))
+    destino = (req.corpo.get("destino") or "").strip()
+    if OM.status().get("estado") != "conectado":
+        raise ErroUsuario("O Sankhya-OM não está conectado. Conecte pelo botão desta tela.")
+
+    def trabalho(t):
+        from nucleo import dados_arquivo
+        campos = CAMPOS + ["OrdemServico.DTFECHAMENTO"]
+        t.log(f"Lendo as OS de {ini:%d/%m/%Y} a {fim:%d/%m/%Y} no Sankhya-OM (só leitura)...")
+        linhas = _buscar_em_blocos(executantes(), ini, fim, t.log, campos)
+        t.log(f"{len(linhas)} OS lidas.")
+        pasta = destino if destino and os.path.isdir(destino) else dados_arquivo("relatorios")
+        h, x, n = ind.gerar(linhas, campos, ini, fim, pasta, t.log)
+        if not h:
+            return {"mensagem": "Nenhuma OS fechada da unidade no período."}
+        t.adicionar_arquivo("Indicador (HTML)", h)
+        t.adicionar_arquivo("Indicador (Excel)", x)
+        t.log(f"Arquivos em {pasta}")
+        return {"mensagem": f"Indicador de prazo gerado com {n} OS. Nada foi alterado no OM.", "resultado": {"arquivo": h}}
+
+    t = GERENTE.iniciar("om_indicador_prazo", "Indicador de prazo de apontamento (OM, só leitura)", trabalho)
     return 200, {"tarefa": t.id}
