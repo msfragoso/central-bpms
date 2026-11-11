@@ -8,6 +8,10 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.17.1 — 11/11/2026
+- Aceite de OS: a verificação de aceites recusados ou contestados passa a rodar de segunda a sábado, às 08h,
+  13h e 17h (antes, só terças e quintas).
+
 ## 1.17.0 — 11/11/2026
 - Nova tela Liberação GP de Melhores Práticas: lê, nas etapas Validação do escopo e Folha | Validação do escopo
   de uma FAP, os módulos e procedimentos de melhores práticas, e grava, um por vez e só depois da confirmação,

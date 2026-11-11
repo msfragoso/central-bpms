@@ -6,7 +6,7 @@ Quando o cliente recusa ou contesta o aceite, ele fica "Recusado" (REC) ou "Com 
 A Central lê a aba Aceite de OS de cada projeto ativo (só aceites criados no mês atual),
 com quem recusou, o motivo e as OS, e avisa por e-mail os novos, uma vez cada (HAR de 11/11/2026).
 
-Agenda: terças e quintas, três vezes no dia (08h, 13h e 17h; decisão do Fragoso), e pelo
+Agenda: segunda a sábado, três vezes no dia (08h, 13h e 17h; decisão do Fragoso), e pelo
 botão "Verificar agora" na tela Aceite de OS.
 """
 import html
@@ -32,7 +32,7 @@ def _inicio_janela(hoje):
         if d.weekday() != 6:   # domingo não conta
             n += 1
     return d
-DIAS_SEMANA = {1, 3}          # terça e quinta (segunda = 0)
+DIAS_SEMANA = {0, 1, 2, 3, 4, 5}   # segunda a sábado (11/11/2026, Fragoso)
 HORARIOS = [8, 13, 17]        # três verificações no dia
 ARQ = "aceites_contestados.json"
 

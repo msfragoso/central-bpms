@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.17.0";
+  const VERSAO = "1.17.1";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
