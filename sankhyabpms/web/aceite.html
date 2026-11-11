@@ -54,6 +54,17 @@
     <p class="ajuda" style="color:var(--suave);font-size:12px;margin:8px 0 0">Clique na linha para ver as OS, aprovadores e bloqueios.</p>
   </section>
 
+  <section class="card" style="margin-top:14px" id="card-contestados">
+    <h2>Aceites recusados ou contestados <span class="ajuda" id="contestados-quando"></span></h2>
+    <p class="ajuda" style="margin:0 0 8px">Aceites que o cliente recusou ou contestou no Experience, nos projetos ativos, criados no mês atual, com quem recusou e o motivo.
+      A Central verifica sozinha às terças e quintas, às 08h, 13h e 17h, e avisa por e-mail as contestações novas. Só leitura.</p>
+    <div class="tabela-caixa"><table>
+      <thead><tr><th>Cliente</th><th>FAP</th><th>Aceite</th><th>OS envolvidas</th><th>Quem recusou</th><th>Motivo</th></tr></thead>
+      <tbody id="contestados"><tr><td colspan="6">Ainda não verificado.</td></tr></tbody>
+    </table></div>
+    <div class="acoes"><button class="btn secundario" id="btn-contestados" type="button">Verificar agora</button></div>
+  </section>
+
   <section class="card" style="margin-top:14px">
     <h2>Log</h2>
     <pre class="log" id="log"></pre>
@@ -68,6 +79,27 @@
   BPMS.montarTopo("aceite");
   const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
   [$("#de"), $("#ate")].forEach(mascaraData);
+
+  // 11/11/2026: aceites contestados pelo cliente (só leitura)
+  function desenharContestados(r) {
+    if (!r) return;
+    $("#contestados-quando").textContent = r.quando ? `· verificado em ${r.quando}${r.email ? " · " + r.email : ""}` : "";
+    const c = r.contestados || [];
+    $("#contestados").innerHTML = c.length ? c.map((x) => `<tr><td>${esc(x.cliente || "")}<div class="ajuda">GP ${esc(x.gp || "")}</div></td><td>${esc(x.fap)}</td>
+      <td><b>${esc(x.aceite)}</b><div class="ajuda">${esc(x.situacao || "")} · ${esc(x.criado || "")}</div></td>
+      <td>${(x.os || []).map((o) => `${esc(o.os)} · ${esc(o.data || "")} · ${esc(o.consultor || "")} · ${esc(o.horas || "")}h${o.contestada ? " <b>(contestada)</b>" : ""}`).join("<br>")}</td>
+      <td>${(x.recusou || []).map((q) => esc(q.pessoa || "")).join("<br>") || "—"}</td>
+      <td style="white-space:pre-line;max-width:420px">${esc(x.motivo || "—")}</td></tr>`).join("")
+      : `<tr><td colspan="6">Nenhum aceite recusado ou contestado. ✓</td></tr>`;
+  }
+  get("/api/aceite/contestados").then((r) => desenharContestados(r.resultado)).catch(() => {});
+  $("#btn-contestados").onclick = () => {
+    $("#btn-contestados").disabled = true;
+    BPMS.iniciar("/api/aceite/contestados/verificar", {}, el, (t) => {
+      $("#btn-contestados").disabled = false;
+      if (t && t.resultado) desenharContestados(t.resultado);
+    });
+  };
 
   // Um aceite por OS (09/10/2026): cada OS é uma linha, com as horas dela (sem somar a FAP).
   let linhas = [], marcadas = new Set(), situacaoEnvio = {}, ocupado = false, revisoes = {}, aderencias = {}, semReferencia = {}, revisado = false;

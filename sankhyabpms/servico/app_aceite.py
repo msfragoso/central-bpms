@@ -456,3 +456,7 @@ def enviar(req):
 
     t = GERENTE.iniciar("aceite_enviar", "Aceite de OS - envio", trabalho, pasta=PASTAS["aceite"])
     return 200, {"tarefa": t.id}
+
+
+# 11/11/2026: aceites contestados pelo cliente (aviso por e-mail, terças e quintas)
+import aceite_contestados  # noqa: E402,F401

@@ -8,6 +8,18 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.17.0 — 11/11/2026
+- Nova tela Liberação GP de Melhores Práticas: lê, nas etapas Validação do escopo e Folha | Validação do escopo
+  de uma FAP, os módulos e procedimentos de melhores práticas, e grava, um por vez e só depois da confirmação,
+  "MP Completa" com a Liberação GP nos pendentes marcados. Procedimentos já preenchidos, "não se aplica" e do
+  cliente ficam de fora. Relê antes e confere depois.
+- Nova tela Acompanhamento de Projetos: etapas, módulos concluídos, encerramento e documentos de todos os
+  projetos ativos (sem avulsos), com a documentação monitorada por etapa (gerado ou sem documento), alertas
+  (etapa vencida, etapa sem documento, Cronograma Sintético faltando), HTML5 para compartilhar e e-mail dos
+  alertas novos às 08h. Só leitura.
+- Aceite de OS: quadro e e-mail de aceites recusados ou contestados pelo cliente no mês, com as OS, quem
+  recusou e o motivo. Verifica às terças e quintas (08h, 13h e 17h) e pelo botão. Só leitura.
+
 ## 1.16.0 — 11/11/2026
 - Conferência de OS: botão novo "📊 Prazo de apontamento (HTML)". Lê no Sankhya-OM as OS do período e mostra,
   por consultor da unidade, quantos dias passam entre a execução e o fechamento da OS: média em dias úteis e

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liberação GP de Melhores Práticas</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 14px 0; }
+  .kpi { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 10px 14px; }
+  .kpi b { display: block; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--suave); font-size: 12px; }
+  .modulo { margin-top: 14px; }
+  .modulo h2 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .modulo h2 small { color: var(--suave); font-weight: 400; font-size: 13px; }
+  .atividade { margin: 10px 0 4px; font-weight: 700; font-size: 14px; }
+  .proc { display: grid; grid-template-columns: 26px 90px 1fr auto; gap: 8px; align-items: center; padding: 5px 4px; border-bottom: 1px solid var(--linha); font-size: 14px; }
+  .proc .cod { color: var(--suave); font-variant-numeric: tabular-nums; }
+  .sit { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .sit.pendente { background: var(--aviso-claro); color: var(--aviso); border: 1px solid var(--aviso); }
+  .sit.liberado { background: var(--local); color: #fff; }
+  .sit.preenchido, .sit.nao_aplica, .sit.cliente { background: var(--bg); color: var(--suave); border: 1px solid var(--linha); }
+  .barra { position: sticky; bottom: 0; background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 10px 14px; margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .log.curto { max-height: 200px; overflow: auto; }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1>Liberação GP de Melhores Práticas</h1>
+      <p>Etapas Validação do escopo e Folha | Validação do escopo · Experience · procedimento por procedimento, por módulo</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="melhores_praticas"></span>
+  </div>
+  <p class="explicacao">Lê os módulos da FAP nas etapas Validação do escopo e Folha | Validação do escopo e mostra os procedimentos de melhores práticas. Os pendentes marcados recebem
+    <b>MP Completa</b> com a <b>Liberação GP</b>, um por vez, só depois da sua confirmação. Procedimentos já preenchidos, "não se aplica" e do cliente ficam de fora.
+    MP Parcial e Não aderente continuam manuais. ClickUp e OM não são alterados.</p>
+
+  <section class="card faixa">
+    <div class="campos">
+      <div class="campo c3"><label for="fap">FAP</label><input id="fap" inputmode="numeric" placeholder="número da FAP"></div>
+      <div class="campo c9"><div class="acoes" style="margin:0;padding-top:22px">
+        <button class="btn" id="btn-ler" type="button">Ler FAP</button>
+      </div></div>
+    </div>
+    <pre class="log curto oculto" id="log"></pre>
+    <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+  </section>
+
+  <div id="painel" class="oculto">
+    <p class="ajuda" id="titulo-fap"></p>
+    <div class="kpis" id="kpis"></div>
+    <div id="modulos"></div>
+    <div class="barra">
+      <span id="contagem">Nenhum procedimento marcado.</span>
+      <span class="espaco"></span>
+      <button class="btn secundario" id="btn-todos" type="button">Marcar todos os pendentes</button>
+      <button class="btn" id="btn-liberar" type="button" disabled>Liberar marcados</button>
+    </div>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, post, esc, toast } = BPMS;
+  BPMS.montarTopo("melhores_praticas");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto") };
+  const ROTULO = { pendente: "Pendente", liberado: "MP Completa · Liberação GP", preenchido: "Já preenchido", nao_aplica: "Não se aplica", cliente: "Procedimento do cliente" };
+  let dados = null;
+
+  const marcados = () => [...document.querySelectorAll("input[data-proc]:checked")].map((c) => +c.dataset.proc);
+  function contar() {
+    const n = marcados().length;
+    $("#contagem").textContent = n ? `${n} procedimento(s) marcado(s) para liberar.` : "Nenhum procedimento marcado.";
+    $("#btn-liberar").disabled = !n;
+  }
+
+  function desenhar() {
+    if (!dados) return;
+    $("#painel").classList.remove("oculto");
+    $("#titulo-fap").textContent = `FAP ${dados.fap} · ${dados.cliente || ""} · ${dados.projeto || ""} · etapa ${dados.etapa}`;
+    const todos = dados.modulos.flatMap((m) => m.atividades.flatMap((a) => a.procedimentos));
+    const n = (s) => todos.filter((p) => p.situacao === s).length;
+    $("#kpis").innerHTML = [["Módulos", dados.modulos.length], ["Procedimentos", todos.length], ["Pendentes", n("pendente")],
+      ["Liberados", n("liberado")], ["Fora (n/a, cliente, preenchido)", n("nao_aplica") + n("cliente") + n("preenchido")]]
+      .map(([r, v]) => `<div class="kpi"><b>${v}</b><span>${esc(r)}</span></div>`).join("");
+    $("#modulos").innerHTML = dados.modulos.map((m) => {
+      const pend = m.atividades.flatMap((a) => a.procedimentos).filter((p) => p.situacao === "pendente").length;
+      return `<section class="card modulo"><h2>${esc(m.nome)} <small>${esc(m.etapa || "")} · ${pend} pendente(s)</small>
+        ${pend ? `<button class="btn secundario pequeno" type="button" data-modulo="${m.id}">Marcar pendentes do módulo</button>` : ""}</h2>
+        ${m.atividades.map((a) => `<div class="atividade">${esc(a.nome)}</div>` + a.procedimentos.map((p) => `<label class="proc">
+          <input type="checkbox" data-proc="${p.id}" data-mod="${m.id}" ${p.situacao === "pendente" ? "" : "disabled"}>
+          <span class="cod">${esc(p.codigo)}</span><span>${esc(p.nome)}</span><span class="sit ${p.situacao}">${esc(ROTULO[p.situacao] || p.situacao)}</span></label>`).join("")).join("")}
+      </section>`;
+    }).join("");
+    contar();
+  }
+
+  document.addEventListener("change", (e) => { if (e.target.matches("input[data-proc]")) contar(); });
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-modulo]");
+    if (!b) return;
+    const caixas = [...document.querySelectorAll(`input[data-mod="${b.dataset.modulo}"]:not(:disabled)`)];
+    const marcar = caixas.some((c) => !c.checked);
+    caixas.forEach((c) => { c.checked = marcar; });
+    contar();
+  });
+  $("#btn-todos").onclick = () => {
+    const caixas = [...document.querySelectorAll("input[data-proc]:not(:disabled)")];
+    const marcar = caixas.some((c) => !c.checked);
+    caixas.forEach((c) => { c.checked = marcar; });
+    contar();
+  };
+
+  function terminou(t) {
+    $("#btn-ler").disabled = false;
+    if (t && t.resultado && t.resultado.modulos) { dados = t.resultado; desenhar(); }
+  }
+  $("#btn-ler").onclick = () => {
+    const fap = $("#fap").value.replace(/\D/g, "");
+    if (!fap) return toast("Informe o número da FAP.", "erro");
+    $("#btn-ler").disabled = true;
+    $("#log").classList.remove("oculto");
+    BPMS.iniciar("/api/mp/ler", { fap }, el, terminou);
+  };
+  $("#fap").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btn-ler").click(); });
+
+  $("#btn-liberar").onclick = async () => {
+    const ids = marcados();
+    if (!ids.length || !dados) return;
+    const nomes = dados.modulos.map((m) => [m.nome, m.atividades.flatMap((a) => a.procedimentos).filter((p) => ids.includes(p.id)).length]).filter(([, n]) => n);
+    const ok = await BPMS.confirmar(`Liberar ${ids.length} procedimento(s) no Experience?`,
+      `<p>FAP <b>${esc(dados.fap)}</b> · ${esc(dados.cliente || "")} · etapa <b>${esc(dados.etapa)}</b></p>`
+      + `<ul>${nomes.map(([m, n]) => `<li>${esc(m)}: ${n} procedimento(s)</li>`).join("")}</ul>`
+      + `<p>Cada um recebe <b>MP Completa</b> com a <b>Liberação GP</b> marcada, um por vez. Antes de gravar a Central relê a FAP e pula o que não estiver mais pendente; no fim, confere de novo.</p>`,
+      { botao: "Liberar no Experience" });
+    if (!ok) return;
+    $("#btn-liberar").disabled = true; $("#btn-ler").disabled = true;
+    BPMS.iniciar("/api/mp/liberar", { fap: dados.fap, procedimentos: ids, confirmar: true }, el, terminou);
+  };
+
+  BPMS.retomar(["mp_ler", "mp_liberar"], el, terminou, () => { $("#btn-ler").disabled = true; $("#log").classList.remove("oculto"); });
+})();
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 
 const BPMS = (() => {
   // Versão da Central (mesma do CHANGELOG.md e da tag vX.Y.Z no GitHub) -- atualizar a cada publicação.
-  const VERSAO = "1.16.0";
+  const VERSAO = "1.17.0";
   const TELAS = [
     { id: "inicio", href: "index.html", rotulo: "Início" },
     { id: "lancar", href: "lancar.html", rotulo: "Lançar ClickUp" },
@@ -21,6 +21,8 @@ const BPMS = (() => {
     { id: "organograma", href: "organograma.html", rotulo: "Organograma" },
     { id: "chamados", href: "chamados.html", rotulo: "Chamados" },
     { id: "chat_os", href: "chat_os.html", rotulo: "Chat x OS" },
+    { id: "melhores_praticas", href: "melhores_praticas.html", rotulo: "Liberação GP de Melhores Práticas" },
+    { id: "projetos", href: "projetos.html", rotulo: "Acompanhamento de Projetos" },
   ];
 
   // 04/11/2026 (Fragoso): ícone de cada módulo, usado no menu do topo e nos cartões do Início
@@ -40,6 +42,8 @@ const BPMS = (() => {
     organograma: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/>',
     chamados: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
     chat_os: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
+    projetos: '<path d="M4 19h16M4 15l4-4 4 3 7-7"/><circle cx="8" cy="11" r="1"/><circle cx="12" cy="14" r="1"/>',
+    melhores_praticas: '<path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/>',
     inicio: '<path d="M3 11l9-8 9 8"/><path d="M5 9.5V21h14V9.5M10 21v-6h4v6"/>',
   };
   const icone = (id) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONES[id] || ""}</svg>`;

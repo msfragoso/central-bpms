@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acompanhamento de Projetos</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: 14px 0; }
+  .kpi { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 10px 14px; }
+  .kpi b { display: block; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--suave); font-size: 12px; }
+  .kpi.alerta b { color: var(--perigo); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sub { color: var(--suave); font-size: 12px; margin-top: 2px; }
+  .barra { height: 8px; background: var(--linha); border-radius: 4px; width: 120px; margin-top: 4px; }
+  .barra i { display: block; height: 8px; background: var(--local); border-radius: 4px; }
+  tr.proj { cursor: pointer; }
+  tr.detalhe > td { background: var(--bg); padding: 10px 14px; }
+  .al { color: var(--perigo); font-weight: 700; }
+  ul.alertas { margin: 0 0 10px; padding-left: 18px; color: var(--perigo); }
+  .etapa { display: grid; grid-template-columns: 14px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed var(--linha); }
+  .pt { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+  .pt.encerrada { background: var(--local); } .pt.andamento { background: #3A6FB0; } .pt.nao_iniciada { background: var(--suave); }
+  .sit { font-size: 12px; font-weight: 700; margin-left: 6px; }
+  .doc { font-size: 13px; margin-top: 4px; }
+  .ap { display: inline-block; margin: 3px 4px 0 0; padding: 1px 7px; border-radius: 6px; font-size: 11px; border: 1px solid var(--linha); }
+  .ap.ok { color: var(--local); border-color: var(--local); } .ap.pe { color: var(--aviso); border-color: var(--aviso); }
+  .dm { display: inline-block; margin: 4px 4px 0 0; padding: 1px 8px; border-radius: 6px; font-size: 12px; border: 1px solid var(--linha); }
+  .dm.gerado { color: var(--local); border-color: var(--local); } .dm.sem_documento { color: var(--perigo); border-color: var(--perigo); }
+  .log.curto { max-height: 160px; overflow: auto; }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1>Acompanhamento de Projetos</h1>
+      <p>Etapas, módulos e documentos dos projetos ativos (sem avulsos) · Experience · só leitura · e-mail de alertas novos às 08h</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="projetos"></span>
+  </div>
+  <p class="explicacao">Mostra em que etapa cada projeto está, quantos módulos de cada etapa estão concluídos, se a etapa foi encerrada e a situação dos documentos, com quem falta aprovar.
+    Alertas: etapa com data final vencida e ainda aberta; etapa monitorada encerrada ou com módulos concluídos sem documento; Cronograma Sintético faltando depois do Kick off / Check-in. Na documentação vale o documento gerado na aba Documentação; a aprovação aparece só como informação.
+    Nada é alterado no Experience.</p>
+
+  <section class="card faixa">
+    <div class="acoes" style="margin:0">
+      <button class="btn" id="btn-atualizar" type="button">Atualizar agora</button>
+      <label class="checar"><input type="checkbox" id="email" checked> Enviar por e-mail os alertas novos</label>
+      <span class="espaco"></span>
+      <span class="ajuda" id="quando"></span>
+    </div>
+    <pre class="log curto oculto" id="log"></pre>
+    <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+    <div class="arquivos" id="arquivos"></div>
+  </section>
+
+  <div id="painel" class="oculto">
+    <div class="kpis" id="kpis"></div>
+    <section class="card">
+      <div class="tabela-caixa">
+        <table>
+          <thead><tr><th>Cliente / projeto</th><th>FAP</th><th>GP</th><th>Termômetro</th><th>Etapa atual</th><th>Evolução</th><th>Documentação</th><th class="num">Docs pendentes</th><th class="num">Alertas</th></tr></thead>
+          <tbody id="corpo"></tbody>
+        </table>
+      </div>
+    </section>
+    <p class="ajuda">Clique no projeto para ver as etapas e os documentos. Etapas de gestão (Gerenciamento do Projeto, Gestão da Trilha) não contam na evolução.</p>
+  </div>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, get, esc, toast } = BPMS;
+  BPMS.montarTopo("projetos");
+  const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
+  const ROT = { encerrada: "Encerrada", andamento: "Em andamento", nao_iniciada: "Não iniciada" };
+  let dados = null;
+
+  function detalhe(p) {
+    const SD = { gerado: "gerado", sem_documento: "sem documento" };
+    let h = (p.documentacao || []).length ? `<div style="margin-bottom:10px"><b>Documentação monitorada</b><br>${p.documentacao.map((x) =>
+      `<span class="dm ${x.situacao}">${esc(x.item)}: ${SD[x.situacao] || x.situacao}</span>`).join("")}</div>` : "";
+    h += p.alertas.length ? `<ul class="alertas">${p.alertas.map((a) => `<li>⚠ ${esc(a.texto)}</li>`).join("")}</ul>` : "";
+    h += (p.etapas || []).map((s) => `<div class="etapa"><span class="pt ${s.situacao}"></span><div>
+      <b>${esc(s.nome)}</b><span class="sit">${ROT[s.situacao]}</span>${s.vencida && !s.gestao ? ' <span class="al">· vencida</span>' : ""}
+      <div class="sub">${s.concluidos}/${s.modulos} módulo(s) concluído(s)${s.inicio || s.fim ? ` · ${esc(s.inicio)} a ${esc(s.fim)}` : ""}${s.situacao === "encerrada" && s.encerrada_por ? ` · encerrada por ${esc(s.encerrada_por)} em ${esc(s.encerrada_em)}` : ""}</div>
+      ${s.relatorios_previstos.length && !s.documentos.length ? `<div class="sub">Relatório previsto: ${esc(s.relatorios_previstos.join(", "))}</div>` : ""}
+      ${s.documentos.map((d) => `<div class="doc">📄 ${esc(d.titulo || "")}${d.modulo ? " · " + esc(d.modulo) : ""} · <b>${esc(d.situacao || "")}</b> · ${esc(d.criado || "")}<br>
+        ${d.aprovadores.map((a) => `<span class="ap ${/^aprov/i.test(a.situacao || "") ? "ok" : "pe"}">${esc(a.pessoa || "")} · ${esc(a.papel || "")}: ${esc(a.situacao || "")}</span>`).join("")}</div>`).join("")}
+    </div></div>`).join("");
+    return h || '<span class="sub">Sem etapas lidas.</span>';
+  }
+
+  function desenhar() {
+    if (!dados) return;
+    $("#painel").classList.remove("oculto");
+    $("#quando").textContent = `Atualizado em ${dados.quando}${dados.email ? " · " + dados.email : ""}`;
+    const P = dados.projetos;
+    const soma = (f) => P.reduce((t, p) => t + (p[f] || 0), 0);
+    $("#kpis").innerHTML = `<div class="kpi"><b>${P.length}</b><span>projetos ativos</span></div>
+      <div class="kpi"><b>${soma("docs_pendentes")}</b><span>documentos aguardando aprovação</span></div>
+      <div class="kpi ${dados.alertas ? "alerta" : ""}"><b>${dados.alertas}</b><span>alertas</span></div>
+      <div class="kpi"><b>${soma("encerradas")}/${soma("total_etapas")}</b><span>etapas encerradas</span></div>`;
+    $("#corpo").innerHTML = P.map((p, i) => {
+      const pct = p.total_etapas ? Math.round(p.encerradas / p.total_etapas * 100) : 0;
+      return `<tr class="proj" data-i="${i}"><td><b>${esc(p.cliente || "")}</b><div class="sub">${esc(p.projeto || "")} · ${esc(p.status || "")}</div></td>
+        <td>${esc(p.fap)}</td><td>${esc(p.gp || "")}</td><td>${esc(p.termometro || "")}</td><td>${esc(p.etapa_atual || "")}</td>
+        <td><div class="barra"><i style="width:${pct}%"></i></div><div class="sub">${p.encerradas}/${p.total_etapas} etapas</div></td>
+        <td>${p.doc_gerados || 0}/${p.doc_total || 0}<div class="sub">gerados</div></td><td class="num">${p.docs_pendentes}</td><td class="num">${p.alertas.length ? `<span class="al">${p.alertas.length}</span>` : 0}</td></tr>
+        <tr class="detalhe oculto" id="det-${i}"><td colspan="9">${detalhe(p)}</td></tr>`;
+    }).join("");
+  }
+
+  document.addEventListener("click", (e) => {
+    const r = e.target.closest("tr.proj");
+    if (r) $(`#det-${r.dataset.i}`).classList.toggle("oculto");
+  });
+
+  function terminou(t) {
+    $("#btn-atualizar").disabled = false;
+    if (t && t.resultado && t.resultado.projetos) { dados = t.resultado; desenhar(); }
+  }
+  $("#btn-atualizar").onclick = () => {
+    $("#btn-atualizar").disabled = true;
+    $("#log").classList.remove("oculto");
+    BPMS.iniciar("/api/projetos/atualizar", { email: $("#email").checked }, el, terminou);
+  };
+
+  (async () => {
+    try {
+      const r = await get("/api/projetos/ultima");
+      if (r.resultado) { dados = r.resultado; desenhar(); }
+    } catch (e) { toast(e.message, "erro"); }
+    BPMS.retomar(["projetos"], el, terminou, () => { $("#btn-atualizar").disabled = true; $("#log").classList.remove("oculto"); });
+  })();
+})();
+</script>
+</body>
+</html>
