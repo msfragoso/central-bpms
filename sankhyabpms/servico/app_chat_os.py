@@ -101,6 +101,25 @@ def enviar_mensagens(req):
     return 200, {"arquivo": os.path.basename(destino)}
 
 
+def _os_origem_whatsapp(ini, fim, log):
+    """12/11/2026 (Fragoso): números de OS cujas tarefas no ClickUp têm Origem = Whatsapp (vínculo confirmado). Só leitura."""
+    try:
+        import clickup_visao as V
+        from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
+        oss = set()
+        for t_ in V.buscar_tarefas(CLICKUP_API, CLICKUP_HEADERS, ini, fim, log=lambda *a: None):
+            cf = {x.get("name"): x for x in t_.get("custom_fields", [])}
+            if cf.get("Origem") and "whats" in str(V._valor_dropdown(cf["Origem"]) or "").lower() and cf.get("OS Sankhya"):
+                n = str(V._texto_cf(cf["OS Sankhya"]) or "").strip()
+                if n:
+                    oss.add(n)
+        log(f"ClickUp: {len(oss)} OS em tarefas com Origem = Whatsapp.")
+        return oss
+    except Exception as e:  # sem o ClickUp, segue sem a confirmação pela Origem
+        log(f"⚠ Não foi possível ler a Origem no ClickUp ({e}). O vínculo segue só por data e citação.")
+        return None
+
+
 @rota("POST", "/api/chat-os/gerar")
 def gerar(req):
     mes_txt = str(req.corpo.get("mes") or "")
@@ -118,15 +137,17 @@ def gerar(req):
         folga = timedelta(days=m.FOLGA_OM_DIAS)
         ini, fim = mes.start_time.date() - folga, mes.end_time.date() + folga
         om_df, _ = app_om.buscar_os(ini, fim, t.log)
+        os_wa = _os_origem_whatsapp(ini, fim, t.log)
         t.log("Cruzando os atendimentos com as OS...")
         hist = _historico()
-        ind, pdf, xlsx = m.gerar(csvs[mes_txt][0], om_df, mes, PASTA_SAIDA, historico=hist, log=t.log, pasta_mensagens=PASTA_MENSAGENS)
+        ind, pdf, xlsx = m.gerar(csvs[mes_txt][0], om_df, mes, PASTA_SAIDA, historico=hist, log=t.log, pasta_mensagens=PASTA_MENSAGENS, os_whatsapp=os_wa)
         hist[mes_txt] = ind
         gravar_json_dados(ARQ_HISTORICO, hist)
         t.adicionar_arquivo("Relatório (PDF)", pdf)
         t.adicionar_arquivo("Planilha de conferência (Excel)", xlsx)
         marcar_uso("chat_os")
-        msg = f"{ind['rotulo'].capitalize()}: {round(ind['pct_com_os'] * 100)}% do tempo com parceiros tem OS vinculada."
+        msg = (f"{ind['rotulo'].capitalize()}: conversão do tempo de atendimento em OS entre {round(ind['pct_com_os'] * 100)}% (comprovada) "
+               f"e {round(ind.get('pct_possivel', ind['pct_com_os']) * 100)}% (possível).")
         if ind["sem_correspondencia"]:
             msg += " Sem correspondência no OM: " + ", ".join(ind["sem_correspondencia"]) + "."
         return {"mensagem": msg}

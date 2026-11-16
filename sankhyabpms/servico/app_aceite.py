@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 
 from nucleo import GERENTE, PASTA_DADOS, PASTAS, ErroUsuario, exigir_confirmacao, marcar_uso, periodo_br, rota
 
-ESTADO = {"token": None, "resultados": {}, "revisado": False, "sem_referencia": {}}
+ESTADO = {"token": None, "resultados": {}, "revisado": False, "sem_referencia": {}, "aderencias": {}}
 
 
 def _core():
@@ -150,6 +150,7 @@ def conferir(req):
         verificar = sum(1 for r in res for o in r["os"] if o.get("_alertas"))
         ESTADO["resultados"] = {r["fap"]: r for r in res}
         ESTADO["sem_referencia"] = {}
+        ESTADO["aderencias"] = {}
         ESTADO["revisado"] = False  # 10/11/2026: toda conferência nova exige nova verificação dos textos antes do envio
         t.adicionar_arquivo("Prévia (.csv)", core.salvar_csv(res))
         prontas = sum(1 for r in res if r["os"] and not r["bloqueios"])
@@ -194,6 +195,7 @@ def revisar_textos(req):
         t.log("Comparando a Solução com o título e o Detalhamento das tarefas (só leitura)...")
         aderencias, sem_referencia = _aderencias(_login(_core(), t), t, revisoes)
         ESTADO["sem_referencia"] = sem_referencia
+        ESTADO["aderencias"] = aderencias   # 11/11/2026: o título também pode ser ajustado no "Conferir aderência"
         ESTADO["revisado"] = True
         marcar_uso("aceite")
         return {"mensagem": f"Revisão concluída: {len(revisoes)} de {len(textos)} texto(s) com ajuste ou ponto a conferir e "
@@ -250,7 +252,7 @@ def _aderencias(token, t, revisoes):
             situacao = AT.avaliar(dados[0], dados[1], sol, termos)
             contagem[situacao] += 1
             if situacao == "conferir":
-                saida[k] = {"titulo": dados[0], "detalhamento": dados[1], "url": dados[2]}
+                saida[k] = {"titulo": dados[0], "detalhamento": dados[1], "url": dados[2], "tarefa": dados[3], "solucao": sol}
             elif situacao == "ignorar":
                 texto_base = (revisoes.get(k) or {}).get("sugerido") or sol
                 novo_titulo, novo_detalhe = AT.sugerir(dados[0], dados[1], texto_base, termos)
@@ -348,8 +350,9 @@ def ajustar_tarefa(req):
     from clickup_sync.config import CLICKUP_API, CLICKUP_HEADERS
     exigir_confirmacao(req)
     k = f"{req.corpo.get('fap')}|{req.corpo.get('os')}"
-    a = ESTADO["sem_referencia"].get(k)
-    if not a:
+    # 11/11/2026: vale para o "Sem referência" e para o "Conferir aderência".
+    a = ESTADO["sem_referencia"].get(k) or (ESTADO.get("aderencias") or {}).get(k)
+    if not a or not a.get("tarefa"):
         raise ErroUsuario("Esta tarefa não está na última verificação. Clique em Conferir de novo.")
     titulo, detalhamento = (req.corpo.get("titulo") or "").strip(), (req.corpo.get("detalhamento") or "").strip()
     if not titulo or len(titulo) > 200 or len(detalhamento) > LIMITE_SOLUCAO:
@@ -384,8 +387,21 @@ def ajustar_tarefa(req):
         f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "tarefa": a["tarefa"], "chave": k, "titulo_antes": a["titulo"], "titulo_depois": titulo,
                             "detalhamento_antes": a["detalhamento"], "detalhamento_depois": detalhamento}, ensure_ascii=False) + "\n")
     ESTADO["sem_referencia"].pop(k, None)
+    aderente = None
+    if k in (ESTADO.get("aderencias") or {}):
+        # Reavalia a aderência com o título/Detalhamento novos: se passou, o selo some.
+        import aderencia_texto as AT
+        sol = ESTADO["aderencias"][k].get("solucao") or ""
+        aderente = AT.avaliar(titulo, detalhamento, sol, AT.termos()) == "ok"   # "ignorar" (título genérico) não conta como aderente
+        if aderente:
+            ESTADO["aderencias"].pop(k, None)
+        else:
+            ESTADO["aderencias"][k].update(titulo=titulo, detalhamento=detalhamento)
     marcar_uso("aceite")
-    return 200, {"mensagem": f"{' e '.join(mudou).capitalize()} atualizado(s) no ClickUp."}
+    msg = f"{' e '.join(mudou).capitalize()} atualizado(s) no ClickUp."
+    if aderente is not None:
+        msg += " Agora a Solução tem aderência à tarefa." if aderente else " A Solução ainda não tem palavras em comum com a tarefa (ou o título ficou genérico): confira."
+    return 200, {"mensagem": msg, "aderente": aderente}
 
 
 @rota("POST", "/api/aceite/solucao/gravar")

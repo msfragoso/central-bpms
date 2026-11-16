@@ -8,6 +8,15 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.18.0 — 16/11/2026
+- Verificação de Pedidos: novo campo "Parceiro ou FAP" para filtrar a tabela depois da consulta, sem consultar de novo
+  (com sugestões, botão Limpar e contagem das linhas que ficaram fora do filtro escolhido).
+- Aceite de OS: no "Conferir aderência" dá para ajustar o título e o Detalhamento da tarefa e gravar no ClickUp;
+  a aderência é reavaliada na hora e o aviso some quando a Solução passa a ter palavras em comum com a tarefa.
+- Chat x OS: a conversão do tempo de atendimento em OS aparece como faixa, de "comprovada" a "possível";
+  tarefas do ClickUp com Origem = Whatsapp confirmam o vínculo. O histórico ganhou a coluna "Conversão possível".
+- Sync: o subtítulo da tela deixa de citar o saldo dos pedidos.
+
 ## 1.17.1 — 11/11/2026
 - Aceite de OS: a verificação de aceites recusados ou contestados passa a rodar de segunda a sábado, às 08h,
   13h e 17h (antes, só terças e quintas).

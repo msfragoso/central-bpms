@@ -207,13 +207,33 @@
     } catch (err) { toast(err.message, "erro"); }
   }
 
-  function abrirAderencia(k) {
+  // 11/11/2026: no "Conferir aderência" dá para ajustar o título (e o Detalhamento) da tarefa no ClickUp.
+  async function abrirAderencia(k) {
     const item = itens().find((i) => i.k === k), a = aderencias[k];
     if (!item || !a) return;
-    const bloco = (rot, txt) => `<p style="margin:10px 0 2px"><b>${rot}</b></p><div style="white-space:pre-wrap;font-size:13px;max-height:170px;overflow:auto;padding:8px;border:1px solid var(--borda);border-radius:6px">${esc(txt)}</div>`;
-    informar(`Conferir aderência · OS ${item.o.num} · ${item.r.parceiro}`,
-      `<div class="aviso">A Solução não tem palavras importantes em comum com a tarefa. É só um aviso: a comparação olha palavras, não o sentido.</div>`
-      + bloco("Título da tarefa", a.titulo) + bloco("Detalhamento", a.detalhamento) + bloco("Solução da OS", item.o.solucao));
+    const pr = modal({
+      titulo: `Conferir aderência · OS ${item.o.num} · ${item.r.parceiro}`,
+      html: `<div class="aviso">A Solução não tem palavras importantes em comum com a tarefa. A comparação olha palavras, não o sentido. Se o título não descreve a demanda, ajuste aqui e grave no ClickUp.</div>
+        <label class="ajuda" for="ad-titulo" style="display:block;margin-top:10px">Título da tarefa no ClickUp (pode editar)</label>
+        <input id="ad-titulo" style="width:100%" value="${esc(a.titulo)}">
+        <label class="ajuda" for="ad-detalhe" style="display:block;margin-top:10px">Detalhamento (pode editar)</label>
+        <textarea id="ad-detalhe" rows="5" style="width:100%;font:inherit;font-size:13px">${esc(a.detalhamento)}</textarea>
+        <p style="margin:10px 0 2px"><b>Solução da OS</b></p><div style="white-space:pre-wrap;font-size:13px;max-height:170px;overflow:auto;padding:8px;border:1px solid var(--borda);border-radius:6px">${esc(item.o.solucao)}</div>
+        <p style="margin:10px 0 0"><a href="${esc(a.url)}" target="_blank" rel="noopener">Abrir a tarefa no ClickUp</a></p>`,
+      opcoes: [{ valor: false, rotulo: "Fechar", estilo: "neutro" }, { valor: true, rotulo: "Gravar no ClickUp", estilo: "primario" }],
+    });
+    const cT = $("#ad-titulo"), cD = $("#ad-detalhe");
+    let titulo = cT.value, detalhamento = cD.value;
+    cT.addEventListener("input", () => { titulo = cT.value; });
+    cD.addEventListener("input", () => { detalhamento = cD.value; });
+    if (!(await pr)) return;
+    if (titulo.trim() === (a.titulo || "").trim() && detalhamento.trim() === (a.detalhamento || "").trim()) return toast("Nada foi alterado.", "erro");
+    try {
+      const res = await post("/api/aceite/tarefa/ajustar", { fap: item.r.fap, os: item.o.id, titulo, detalhamento, confirmar: true });
+      if (res.aderente) delete aderencias[k]; else { a.titulo = titulo.trim(); a.detalhamento = detalhamento.trim(); }
+      toast(res.mensagem, res.aderente === false ? "erro" : "ok");
+      desenhar();
+    } catch (err) { toast(err.message, "erro"); }
   }
 
   async function abrirRevisao(k) {

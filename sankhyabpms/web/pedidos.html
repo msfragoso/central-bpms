@@ -37,6 +37,9 @@
   tr.nao-medicao > td:first-child { box-shadow: inset 4px 0 0 var(--aviso); }
   .selo-tipo { display: inline-block; margin-top: 4px; padding: 1px 7px; border: 1px solid var(--aviso); border-radius: 999px; background: var(--aviso-claro); color: var(--aviso); font-size: 11px; font-weight: 700; white-space: nowrap; }
   .tipo-ok { color: var(--suave); font-size: 11px; margin-top: 2px; }
+  .busca-linha { display: flex; gap: 8px 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .busca-linha label { font-size: 13px; font-weight: 600; }
+  .busca-linha input { flex: 1 1 260px; max-width: 420px; }
   .faixa-manual { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 10px 14px; border: 1px solid var(--aviso); border-left-width: 5px; border-radius: var(--raio); background: var(--aviso-claro); }
   .faixa-manual b { color: var(--aviso); }
   .faixa-manual ul { margin: 4px 0 0; padding-left: 18px; }
@@ -78,6 +81,13 @@
     <div class="kpis" id="kpis"></div>
     <div class="faixa-manual oculto" id="faixa-manual" role="status"></div>
     <div class="chips" id="chips"></div>
+    <div class="busca-linha">
+      <label for="busca">Parceiro ou FAP</label>
+      <input id="busca" type="search" list="lista-busca" placeholder="Digite o parceiro ou o número da FAP" autocomplete="off">
+      <datalist id="lista-busca"></datalist>
+      <button class="btn secundario oculto" id="btn-limpar-busca" type="button">Limpar</button>
+      <span class="ajuda" id="busca-conta"></span>
+    </div>
     <section class="card">
       <div class="tabela-caixa">
         <table>
@@ -98,7 +108,15 @@
   const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto") };
   const CLASSE = { "FALTAM HORAS": "falta", "SEM PEDIDO": "sem", "SALDO BAIXO": "baixo", "CONFERIR": "conferir", "OK": "ok" };
   const ALERTAS = ["FALTAM HORAS", "SEM PEDIDO", "SALDO BAIXO"];
-  let dados = null, filtro = "alertas", semana = {};
+  let dados = null, filtro = "alertas", semana = {}, busca = "";
+  // 16/11/2026 (Fragoso): filtro por parceiro ou FAP depois da consulta, sem consultar de novo.
+  const semAcento = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const casaBusca = (r) => {
+    const termo = semAcento(busca);
+    if (!termo) return true;
+    const alvo = semAcento(`${r.parceiro} ${r.fap} ${r.parceiro} (FAP ${r.fap})`);
+    return termo.split(/\s+/).every((p) => alvo.includes(p));
+  };
   // Tipo de operação do pedido: 104 Medição; Empreito e Banco de Horas só têm ajuste manual.
   const tipoDoPedido = (p) => {
     const t = String(p.tipo || "").toUpperCase();
@@ -139,7 +157,14 @@
       .concat([["todos", `Todos (${linhas.length})`]]);
     if (!opcoes.some(([v]) => v === filtro)) filtro = "todos";
     $("#chips").innerHTML = opcoes.map(([v, r]) => `<button class="chip ${filtro === v ? "ativo" : ""}" data-f="${v}" type="button">${esc(r)}</button>`).join("");
-    const vis = filtro === "todos" ? linhas : filtro === "alertas" ? linhas.filter((r) => ALERTAS.includes(r.situacao)) : porTipo[filtro];
+    const doChip = filtro === "todos" ? linhas : filtro === "alertas" ? linhas.filter((r) => ALERTAS.includes(r.situacao)) : porTipo[filtro];
+    const vis = doChip.filter(casaBusca);
+    $("#lista-busca").innerHTML = [...new Set(linhas.map((r) => `${r.parceiro} (FAP ${r.fap})`))].sort((a, b) => a.localeCompare(b, "pt-BR"))
+      .map((v) => `<option value="${esc(v)}"></option>`).join("");
+    $("#btn-limpar-busca").classList.toggle("oculto", !busca.trim());
+    const fora = busca.trim() ? linhas.filter(casaBusca).length - vis.length : 0;
+    $("#busca-conta").textContent = !busca.trim() ? "" : `${vis.length} de ${doChip.length} linha(s)`
+      + (fora > 0 ? `. Mais ${fora} fora do filtro acima, veja em Todos.` : "");
     $("#corpo").innerHTML = vis.map((r, i) => `<tr class="${r.medicao === false ? "nao-medicao" : ""}">
         <td><span class="sit ${CLASSE[r.situacao] || "conferir"}">${esc(r.situacao)}</span></td>
         <td>${esc(r.parceiro)}${r.observacao ? `<div class="obs">${esc(r.observacao)}</div>` : ""}</td>
@@ -157,7 +182,7 @@
         <thead><tr><th>Data</th><th>Período</th><th class="num">Horas</th><th>Tarefa</th><th>Responsável</th><th>Status</th></tr></thead>
         <tbody>${(r.tarefas || []).map((t) => `<tr><td>${esc(t.data)}</td><td>${esc(t.periodo)}</td><td class="num">${esc(t.horas)}</td>
           <td><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.nome)}</a></td><td>${esc(t.responsavel)}</td><td>${esc(t.status)}</td></tr>`).join("")}</tbody>
-      </table></td></tr>`).join("") || `<tr><td colspan="10">Nenhum pedido em alerta neste período.</td></tr>`;
+      </table></td></tr>`).join("") || `<tr><td colspan="10">${busca.trim() ? "Nenhuma linha com esse parceiro ou FAP neste filtro." : "Nenhum pedido em alerta neste período."}</td></tr>`;
     const av = dados.avisos || [];
     $("#card-avisos").classList.toggle("oculto", !av.length);
     $("#avisos").innerHTML = av.map((a) => `<li>${esc(a)}</li>`).join("");
@@ -178,7 +203,11 @@
   // 05/11/2026 (Fragoso): ajuste só da quantidade no OM, tipo 104, sempre confirmado. O Experience é manual.
   const moeda = (v) => (v === null || v === undefined || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
   let horasDigitadas = "";
-  document.addEventListener("input", (e) => { if (e.target.id === "horas-somar") horasDigitadas = e.target.value; });
+  document.addEventListener("input", (e) => {
+    if (e.target.id === "horas-somar") horasDigitadas = e.target.value;
+    if (e.target.id === "busca") { busca = e.target.value; if (dados) desenhar(); }
+  });
+  $("#btn-limpar-busca").onclick = () => { busca = ""; $("#busca").value = ""; desenhar(); $("#busca").focus(); };
   async function ajustar(pedido, sobra) {
     const falta = Math.ceil(Math.max(0, -sobra) / 60);
     horasDigitadas = String(Math.max(dados.sugestao_minima || 20, falta));
