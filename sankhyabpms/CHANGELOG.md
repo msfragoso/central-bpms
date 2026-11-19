@@ -8,6 +8,17 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.19.0 — 19/11/2026
+- Aceite de OS: o bloqueio passa a ser por OS. Uma OS bloqueada (por exemplo, tempo quebrado) não segura mais as
+  outras da FAP, e pode ser liberada na tela, uma a uma, com o motivo à vista e registro no log; o envio mostra
+  "LIBERADA FORA DA REGRA". Bloqueio da FAP inteira continua sem liberação.
+- Aceite de OS: dá para corrigir início, fim e intervalo da OS no Experience sem sair da tela, e a verificação
+  dos textos roda também nas OS bloqueadas, para ajustar antes de liberar.
+- Sync: quando o projeto tem mais de um Pedido liberado e o saldo não desempata, a tela mostra o quadro
+  "Escolha o Pedido para lançar". Marque o Pedido e até onde vale a escolha (só estas tarefas, a lista do
+  ClickUp ou o projeto inteiro); o sync roda de novo só para aquela FAP e aquelas datas.
+- Acompanhamento de Projetos: o Cronograma Sintético aparece logo depois do Kick off / Check-in na documentação.
+
 ## 1.18.0 — 16/11/2026
 - Verificação de Pedidos: novo campo "Parceiro ou FAP" para filtrar a tabela depois da consulta, sem consultar de novo
   (com sugestões, botão Limpar e contagem das linhas que ficaram fora do filtro escolhido).

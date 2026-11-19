@@ -102,11 +102,13 @@
   };
 
   // Um aceite por OS (09/10/2026): cada OS é uma linha, com as horas dela (sem somar a FAP).
-  let linhas = [], marcadas = new Set(), situacaoEnvio = {}, ocupado = false, revisoes = {}, aderencias = {}, semReferencia = {}, revisado = false;
+  let linhas = [], marcadas = new Set(), liberadas = {}, situacaoEnvio = {}, ocupado = false, revisoes = {}, aderencias = {}, semReferencia = {}, revisado = false;
   const estadoOrdem = ordenavel($("#tabela"), desenhar);
   const minutos = (h) => { const m = /^(\d+):(\d+)/.exec(h || ""); return m ? +m[1] * 60 + +m[2] : -1; };
   const dataNum = (s) => { const d = BPMS.dataValida(s); return d ? d.getTime() : 0; };
   const chaveOS = (r, o) => `${r.fap}|${o.id}`;
+  // 16/11/2026: o serviço novo manda a situação por OS; o antigo só por FAP.
+  const sitOS = (r, o) => (o && o.situacao) || r.situacao;
   // linhas da tabela: uma por OS; FAP bloqueada sem OS ainda aparece numa linha só
   const itens = () => linhas.flatMap((r) => r.os.length ? r.os.map((o) => ({ r, o, k: chaveOS(r, o) })) : [{ r, o: null, k: `${r.fap}|` }]);
 
@@ -126,34 +128,51 @@
       corpo.innerHTML = `<tr><td colspan="10" class="vazio-tabela">Nenhuma FAP com OS no período.</td></tr>`;
     } else {
       corpo.innerHTML = lista.map(({ r, o, k }) => {
-        const pronta = r.situacao === "PRONTA" && o;
-        const verificar = pronta && o.alertas && o.alertas.length;  // regras de 13/10/2026: só sinaliza
+        // 16/11/2026: situação por OS. Bloqueio da OS (tempo quebrado) não segura as outras da FAP e pode ser liberado aqui.
+        const liberada = !!liberadas[k];
+        const pronta = o && (sitOS(r, o) === "PRONTA" || liberada);
+        const verificar = pronta && !liberada && o.alertas && o.alertas.length;  // regras de 13/10/2026: só sinaliza
         const env = situacaoEnvio[k];
+        const motivosBloq = o ? (r.bloqueios_fap && r.bloqueios_fap.length ? r.bloqueios_fap : (o.bloqueios || [])) : r.bloqueios;
         const sit = env ? `<span class="etiqueta ${env === "ENVIADA" ? "enviada" : "falhou"}">${env}</span>`
+          : liberada ? `<span class="etiqueta verificar" title="${esc(liberadas[k].join(" · "))}">LIBERADA</span>`
           : verificar ? `<span class="etiqueta verificar" title="${esc(o.alertas.join(" · "))}">VERIFICAR</span>`
-          : `<span class="etiqueta ${pronta ? "pronta" : "bloqueada"}">${r.situacao}</span>`;
-        return `<tr class="${verificar ? "verificar" : pronta ? "pronta" : "bloqueada"} clicavel" data-fap="${esc(r.fap)}">
+          : `<span class="etiqueta ${pronta ? "pronta" : "bloqueada"}">${pronta ? "PRONTA" : "BLOQUEADA"}</span>`;
+        const porque = !pronta && !env && motivosBloq && motivosBloq.length
+          ? `<div style="font-size:11px;color:var(--perigo);margin-top:4px;max-width:180px">${motivosBloq.map(esc).join("<br>")}</div>` : "";
+        const botaoLiberar = o && !pronta && !env && o.liberavel
+          ? `<button class="btn secundario pequeno" style="margin-top:4px" type="button" data-liberar="${esc(k)}" title="Liberar esta OS para envio fora da regra">Liberar</button>` : "";
+        const desfazer = liberada && !env ? `<div><a href="#" data-desliberar="${esc(k)}" style="font-size:11px">desfazer liberação</a></div>` : "";
+        return `<tr class="${verificar || liberada ? "verificar" : pronta ? "pronta" : "bloqueada"} clicavel" data-fap="${esc(r.fap)}">
           <td class="centro">${pronta && !env ? `<input type="checkbox" data-marcar="${esc(k)}" ${marcadas.has(k) ? "checked" : ""} aria-label="Enviar OS ${esc(o.num)}">` : ""}</td>
-          <td>${esc(r.fap)}</td><td>${esc(r.parceiro)}</td><td>${sit}</td>
+          <td>${esc(r.fap)}</td><td>${esc(r.parceiro)}</td><td>${sit}${porque}${botaoLiberar}${desfazer}</td>
           <td>${o ? esc(o.num || "-") : "-"}</td><td>${o ? esc(o.data || "-") : "-"}</td><td>${o ? esc(o.executante || "-") : "-"}</td>
           <td>${o ? esc(o.realizado || "-") + (o.ok ? "" : " ⚠")
             + (o.inicio ? `<br><span style="font-size:11px;color:var(--suave);white-space:nowrap">${esc(o.inicio)}–${esc(o.fim)} · int. ${esc(o.intervalo || "00:00")}</span>` : "")
-            + (o.alertas && o.alertas.length ? `<br><span style="font-size:11px;color:var(--aviso);font-weight:600">${o.alertas.map(esc).join("<br>")}</span>` : "") : "-"}</td>
+            + (o.alertas && o.alertas.length ? `<br><span style="font-size:11px;color:var(--aviso);font-weight:600">${o.alertas.map(esc).join("<br>")}</span>` : "")
+            + (!env && o.inicio && (!o.ok || (o.alertas || []).some((a) => a.startsWith("horas realizadas quebradas"))) ? `<br><button class="btn secundario pequeno" style="margin-top:4px" type="button" data-horario="${esc(k)}">Corrigir horário</button>` : "") : "-"}</td>
           <td style="min-width:220px;max-width:340px">${o && o.solucao ? (o.solucao.length > 120
             ? `<details><summary style="cursor:pointer;font-size:12px">${esc(o.solucao.slice(0, 120))}…</summary><div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div></details>`
-            : `<div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div>`) : ""}${revisoes[k] && pronta && !env ? `<button class="btn secundario pequeno" style="margin-top:6px" data-revisar="${esc(k)}" type="button">Revisar: ${revisoes[k].ajustes.length + (revisoes[k].caixa_alta ? 1 : 0)} ajuste(s)${revisoes[k].conferir.length ? `, ${revisoes[k].conferir.length} a conferir` : ""}</button>` : ""}${aderencias[k] && pronta && !env ? `<button class="btn secundario pequeno" style="margin-top:6px;border-color:var(--aviso);color:var(--aviso)" data-aderencia="${esc(k)}" type="button">Conferir aderência</button>` : ""}${semReferencia[k] && pronta && !env ? `<button class="btn secundario pequeno" style="margin-top:6px" data-semref="${esc(k)}" type="button" title="${esc(semReferencia[k].motivo)}">Sem referência</button>` : ""}</td>
+            : `<div style="white-space:pre-wrap;font-size:12px">${esc(o.solucao)}</div>`) : ""}${revisoes[k] && o && !env ? `<button class="btn secundario pequeno" style="margin-top:6px" data-revisar="${esc(k)}" type="button">Revisar: ${revisoes[k].ajustes.length + (revisoes[k].caixa_alta ? 1 : 0)} ajuste(s)${revisoes[k].conferir.length ? `, ${revisoes[k].conferir.length} a conferir` : ""}</button>` : ""}${aderencias[k] && o && !env ? `<button class="btn secundario pequeno" style="margin-top:6px;border-color:var(--aviso);color:var(--aviso)" data-aderencia="${esc(k)}" type="button">${aderencias[k].sugestao_ia_titulo ? "Título sugerido (IA)" : "Conferir aderência"}</button>` : ""}${semReferencia[k] && o && !env ? `<button class="btn secundario pequeno" style="margin-top:6px" data-semref="${esc(k)}" type="button" title="${esc(semReferencia[k].motivo)}">Sem referência</button>` : ""}</td>
           <td>${esc(r.aprovadores.map((a) => a.email).join(", "))}</td></tr>`;
       }).join("");
     }
     const todos = itens().filter((i) => i.o);
-    const prontas = todos.filter((i) => i.r.situacao === "PRONTA").length;
-    const verif = todos.filter((i) => i.r.situacao === "PRONTA" && i.o.alertas && i.o.alertas.length).length;
-    $("#contagem").textContent = linhas.length ? `${prontas} OS pronta(s)${verif ? ` (${verif} para verificar)` : ""} · ${todos.length - prontas} bloqueada(s) · ${marcadas.size} marcada(s)` : "";
+    const prontas = todos.filter((i) => sitOS(i.r, i.o) === "PRONTA").length;
+    const verif = todos.filter((i) => sitOS(i.r, i.o) === "PRONTA" && i.o.alertas && i.o.alertas.length).length;
+    const nLib = Object.keys(liberadas).length;
+    $("#contagem").textContent = linhas.length ? `${prontas} OS pronta(s)${verif ? ` (${verif} para verificar)` : ""} · ${todos.length - prontas} bloqueada(s)${nLib ? ` (${nLib} liberada(s))` : ""} · ${marcadas.size} marcada(s)` : "";
     $("#btn-enviar").disabled = ocupado || !marcadas.size || !revisado;
-    $("#btn-revisar").disabled = ocupado || !prontas;
+    $("#btn-revisar").disabled = ocupado || !todos.length;
   }
 
   $("#corpo").addEventListener("click", (e) => {
+    const hr = e.target.closest("[data-horario]");
+    if (hr) { e.stopPropagation(); return corrigirHorario(hr.dataset.horario); }
+    const lb = e.target.closest("[data-liberar]");
+    if (lb) { e.stopPropagation(); return liberarOS(lb.dataset.liberar); }
+    const dl = e.target.closest("[data-desliberar]");
+    if (dl) { e.preventDefault(); e.stopPropagation(); delete liberadas[dl.dataset.desliberar]; marcadas.delete(dl.dataset.desliberar); return desenhar(); }
     const cb = e.target.closest("[data-marcar]");
     if (cb) {
       cb.checked ? marcadas.add(cb.dataset.marcar) : marcadas.delete(cb.dataset.marcar);
@@ -178,6 +197,65 @@
       + (r.fora_periodo.length ? `<b>Fora do período (não entram)</b><ul>${os(r.fora_periodo)}</ul>` : "")
       + (r.aprovadores.length ? `<b>Aprovadores</b><ul>${r.aprovadores.map((a) => `<li>${esc(a.nome)} &lt;${esc(a.email)}&gt;</li>`).join("")}</ul>` : "")
       + (r.bloqueios.length ? `<b style="color:var(--perigo)">Bloqueios</b><ul>${r.bloqueios.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""));
+  }
+
+  // 16/11/2026 (Fragoso): liberar uma OS bloqueada para envio, fora da regra. Uma a uma, com o motivo à vista; fica no log.
+  async function liberarOS(k) {
+    const item = itens().find((i) => i.k === k);
+    if (!item || !item.o || !item.o.liberavel) return;
+    const { r, o } = item;
+    const ok = await confirmar("Liberar OS fora da regra",
+      `<p style="margin:0 0 8px">FAP ${esc(r.fap)} - ${esc(r.parceiro)} · OS <b>${esc(o.num || "-")}</b> · ${esc(o.data)} · ${esc(o.executante || "-")} · <b>${esc(o.realizado)} h</b></p>`
+      + `<p style="margin:0 0 4px"><b>Regra que será ignorada</b></p><ul style="margin:0 0 8px">${o.bloqueios.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
+      + `<p style="margin:0 0 4px">O aceite vai com <b>${esc(o.realizado)} h</b>, do jeito que está no Experience, para: ${esc(r.aprovadores.map((a) => a.email).join(", ") || "-")}</p>`
+      + `<div class="aviso">A liberação só marca esta OS para envio; nada sai agora. O envio continua no botão Enviar marcadas, e a liberação fica registrada (quem, quando, OS e regra ignorada).</div>`,
+      { botao: "Liberar esta OS", perigo: true });
+    if (!ok) return;
+    liberadas[k] = o.bloqueios.slice();
+    marcadas.add(k);
+    desenhar();
+  }
+
+  // 16/11/2026 (Fragoso): corrigir início, fim e intervalo da OS no Experience, sem sair da tela.
+  async function corrigirHorario(k) {
+    const item = itens().find((i) => i.k === k);
+    if (!item || !item.o) return;
+    const { r, o } = item;
+    const calc = (i, f, iv) => { const m = minutos(f) - minutos(i) - (minutos(iv) < 0 ? 0 : minutos(iv)); return minutos(i) < 0 || minutos(f) < 0 || m <= 0 ? null : m; };
+    const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    const pr = modal({
+      titulo: `Corrigir horário · OS ${o.num} · ${r.parceiro}`,
+      html: `<p style="margin:0 0 8px">${esc(o.data)} · ${esc(o.executante || "-")} · hoje: <b>${esc(o.inicio)}–${esc(o.fim)}</b>, intervalo ${esc(o.intervalo || "00:00")}, Realizado <b>${esc(o.realizado)}</b></p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <label class="ajuda">Início<br><input id="h-ini" value="${esc(o.inicio)}" style="width:90px" inputmode="numeric"></label>
+          <label class="ajuda">Fim<br><input id="h-fim" value="${esc(o.fim)}" style="width:90px" inputmode="numeric"></label>
+          <label class="ajuda">Intervalo<br><input id="h-int" value="${esc(o.intervalo || "00:00")}" style="width:90px" inputmode="numeric"></label>
+        </div>
+        <p id="h-res" style="margin:10px 0 0"></p>
+        <div class="aviso" style="margin-top:10px">Grava o novo horário na OS no Experience (que segue para o OM, como a Solução). O texto da OS não muda e nenhum aceite é gerado. O X-Observações OS do ClickUp não é alterado.</div>`,
+      opcoes: [{ valor: false, rotulo: "Cancelar", estilo: "neutro" }, { valor: true, rotulo: "Gravar no Experience", estilo: "primario" }],
+    });
+    const cI = $("#h-ini"), cF = $("#h-fim"), cV = $("#h-int"), res = $("#h-res");
+    let v = { inicio: cI.value, fim: cF.value, intervalo: cV.value };
+    const mostrar = () => {
+      v = { inicio: cI.value.trim(), fim: cF.value.trim(), intervalo: cV.value.trim() || "00:00" };
+      const m = calc(v.inicio, v.fim, v.intervalo);
+      res.innerHTML = m == null ? `<b style="color:var(--perigo)">Horário inválido</b>`
+        : `Novo Realizado: <b>${fmt(m)}</b>${m % 30 ? ` <b style="color:var(--perigo)">ainda fora de :00/:30</b>` : ` <span style="color:var(--ok, inherit)">dentro da regra</span>`}`;
+    };
+    [cI, cF, cV].forEach((c) => c.addEventListener("input", mostrar));
+    mostrar();
+    if (!(await pr)) return;
+    if (calc(v.inicio, v.fim, v.intervalo) == null) return toast("Horário inválido: use HH:MM e fim depois do início.", "erro");
+    try {
+      const resp = await post("/api/aceite/horario/gravar", { fap: r.fap, os: o.id, inicio: v.inicio, fim: v.fim, intervalo: v.intervalo,
+        inicio_antes: o.inicio, fim_antes: o.fim, confirmar: true });
+      const i = linhas.findIndex((x) => x.fap === r.fap);
+      if (i >= 0 && resp.linha) linhas[i] = resp.linha;
+      delete liberadas[k]; marcadas.delete(k);
+      toast(resp.mensagem, "ok");
+      desenhar();
+    } catch (err) { toast(err.message, "erro"); }
   }
 
   async function abrirSemReferencia(k) {
@@ -213,9 +291,11 @@
     if (!item || !a) return;
     const pr = modal({
       titulo: `Conferir aderência · OS ${item.o.num} · ${item.r.parceiro}`,
-      html: `<div class="aviso">A Solução não tem palavras importantes em comum com a tarefa. A comparação olha palavras, não o sentido. Se o título não descreve a demanda, ajuste aqui e grave no ClickUp.</div>
+      html: (a.sugestao_ia_titulo
+          ? `<div class="aviso">Sugestão da IA (Gemini)${a.motivo_ia ? `: ${esc(a.motivo_ia)}` : ""}. Título atual: <i>${esc(a.titulo)}</i>. Confira e edite antes de gravar.</div>`
+          : `<div class="aviso">A Solução não tem palavras importantes em comum com a tarefa. A comparação olha palavras, não o sentido. Se o título não descreve a demanda, ajuste aqui e grave no ClickUp.</div>`) + `
         <label class="ajuda" for="ad-titulo" style="display:block;margin-top:10px">Título da tarefa no ClickUp (pode editar)</label>
-        <input id="ad-titulo" style="width:100%" value="${esc(a.titulo)}">
+        <input id="ad-titulo" style="width:100%" value="${esc(a.sugestao_ia_titulo || a.titulo)}">
         <label class="ajuda" for="ad-detalhe" style="display:block;margin-top:10px">Detalhamento (pode editar)</label>
         <textarea id="ad-detalhe" rows="5" style="width:100%;font:inherit;font-size:13px">${esc(a.detalhamento)}</textarea>
         <p style="margin:10px 0 2px"><b>Solução da OS</b></p><div style="white-space:pre-wrap;font-size:13px;max-height:170px;overflow:auto;padding:8px;border:1px solid var(--borda);border-radius:6px">${esc(item.o.solucao)}</div>
@@ -244,7 +324,7 @@
     const ajustes = rv.ajustes.map((a) => `<li>${esc(a.de)} → <b>${esc(a.para)}</b></li>`).join("");
     const pr = modal({
       titulo: `Revisar Solução · OS ${o.num} · ${r.parceiro}`,
-      html: `<label class="ajuda">Texto atual</label><div style="white-space:pre-wrap;font-size:13px;max-height:150px;overflow:auto;padding:8px;border:1px solid var(--borda);border-radius:6px">${esc(rv.original)}</div>
+      html: `${rv.fonte === "IA" ? `<div class="aviso" style="margin-bottom:8px">Correção sugerida pela IA (Gemini). Confira se o sentido e os termos técnicos ficaram iguais antes de aprovar.</div>` : ""}<label class="ajuda">Texto atual</label><div style="white-space:pre-wrap;font-size:13px;max-height:150px;overflow:auto;padding:8px;border:1px solid var(--borda);border-radius:6px">${esc(rv.original)}</div>
         <label class="ajuda" for="sug-texto" style="display:block;margin-top:10px">Texto corrigido (pode editar antes de aprovar)</label>
         <textarea id="sug-texto" rows="8" style="width:100%;font:inherit;font-size:13px">${esc(rv.sugerido)}</textarea>
         ${rv.caixa_alta ? `<p class="ajuda">Texto convertido de caixa alta. Confira nomes próprios.</p>` : ""}
@@ -268,7 +348,7 @@
 
   function travar(sim) { ocupado = sim; $("#btn-conferir").disabled = sim; desenhar(); }
 
-  $("#btn-marcar").onclick = () => { itens().forEach(({ r, o, k }) => { if (o && r.situacao === "PRONTA" && !situacaoEnvio[k]) marcadas.add(k); }); desenhar(); };
+  $("#btn-marcar").onclick = () => { itens().forEach(({ r, o, k }) => { if (o && sitOS(r, o) === "PRONTA" && !situacaoEnvio[k]) marcadas.add(k); }); desenhar(); };
   $("#btn-desmarcar").onclick = () => { marcadas.clear(); desenhar(); };
 
   // 10/11/2026 (Fragoso): a verificação dos textos acontece sempre antes do envio; roda sozinha depois de Conferir.
@@ -276,8 +356,9 @@
   const aoConferir = (t) => {
     travar(false);
     if (t && t.resultado) {
-      linhas = t.resultado.linhas; marcadas.clear(); situacaoEnvio = {}; revisoes = {}; aderencias = {}; semReferencia = {}; revisado = false; desenhar();
-      if (itens().some((i) => i.o && i.r.situacao === "PRONTA")) iniciarRevisao();
+      linhas = t.resultado.linhas; marcadas.clear(); liberadas = {}; situacaoEnvio = {}; revisoes = {}; aderencias = {}; semReferencia = {}; revisado = false; desenhar();
+      // 16/11/2026: verifica os textos de todas as OS, inclusive as bloqueadas (antes só rodava se houvesse pronta).
+      if (itens().some((i) => i.o)) iniciarRevisao();
     }
   };
   $("#btn-conferir").onclick = () => {
@@ -291,18 +372,18 @@
 
   const aoEnviar = (t) => {
     travar(false);
-    if (t && t.resultado) { Object.assign(situacaoEnvio, t.resultado.situacao); marcadas.clear(); desenhar(); }
+    if (t && t.resultado) { Object.assign(situacaoEnvio, t.resultado.situacao); marcadas.clear(); Object.keys(t.resultado.situacao || {}).forEach((k) => delete liberadas[k]); desenhar(); }
   };
   $("#btn-enviar").onclick = async () => {
     const sel = itens().filter((i) => i.o && marcadas.has(i.k));
     if (!sel.length) return toast("Nenhuma OS marcada.");
     const ok = await confirmar("Confirmar envio",
-      `Gerar e enviar <b>${sel.length} aceite(s)</b>, um por OS?<ul>${sel.map(({ r, o }) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)} h${o.alertas && o.alertas.length ? ` <b style="color:var(--aviso)">VERIFICAR: ${esc(o.alertas.join("; "))}</b>` : ""}${revisoes[`${r.fap}|${o.id}`] ? ` <b style="color:var(--aviso)">TEXTO A REVISAR</b>` : ""}${aderencias[`${r.fap}|${o.id}`] ? ` <b style="color:var(--aviso)">CONFERIR ADERÊNCIA</b>` : ""}</li>`).join("")}</ul>`
+      `Gerar e enviar <b>${sel.length} aceite(s)</b>, um por OS?<ul>${sel.map(({ r, o, k }) => `<li>FAP ${esc(r.fap)} - ${esc(r.parceiro)}: OS ${esc(o.num)} · ${esc(o.data)} · ${esc(o.realizado)} h${liberadas[k] ? ` <b style="color:var(--perigo)">LIBERADA FORA DA REGRA: ${esc(liberadas[k].join("; "))}</b>` : ""}${o.alertas && o.alertas.length ? ` <b style="color:var(--aviso)">VERIFICAR: ${esc(o.alertas.join("; "))}</b>` : ""}${revisoes[`${r.fap}|${o.id}`] ? ` <b style="color:var(--aviso)">TEXTO A REVISAR</b>` : ""}${aderencias[`${r.fap}|${o.id}`] ? ` <b style="color:var(--aviso)">CONFERIR ADERÊNCIA</b>` : ""}</li>`).join("")}</ul>`
       + `<div class="aviso erro">O e-mail sai direto do Experience para os aprovadores e não tem como desfazer.</div>`,
       { botao: "Enviar aceites", perigo: true });
     if (!ok) return;
     travar(true);
-    BPMS.iniciar("/api/aceite/enviar", { itens: sel.map(({ r, o }) => ({ fap: r.fap, os: o.id })), confirmar: true }, el, aoEnviar);
+    BPMS.iniciar("/api/aceite/enviar", { itens: sel.map(({ r, o, k }) => ({ fap: r.fap, os: o.id, liberar: liberadas[k] || [] })), confirmar: true }, el, aoEnviar);
   };
 
   (async () => {

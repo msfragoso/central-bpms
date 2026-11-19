@@ -245,7 +245,13 @@ def ler_projeto(c, pessoa, p, hoje, log):
                                      + (f" ({', '.join(e['relatorios_previstos'])})." if e["relatorios_previstos"] else ".")})
     # Cronograma Sintético: documento do projeto (costuma vir "Sem Etapa"). Esperado depois do Kick off / Check-in encerrado.
     crono = _docs_validos([d for d in docs if "cronograma sintetico" in _norm(d["titulo"])])
-    documentacao.append({"item": "Cronograma Sintético", "etapa_situacao": "", "situacao": _situacao_docs(crono), "documentos": [d["titulo"] for d in crono]})
+    # 16/11/2026 (Fragoso): na ordem, o Cronograma Sintético vem logo depois do Kick off / Check-in
+    # (sem Kick off, depois da Sintonia Comercial; sem nenhuma das duas, no começo).
+    item_crono = {"item": "Cronograma Sintético", "etapa_situacao": "", "situacao": _situacao_docs(crono), "documentos": [d["titulo"] for d in crono]}
+    nomes = [_norm(x["item"]) for x in documentacao]
+    pos = next((i + 1 for i, n in enumerate(nomes) if n in ("kick off", "check-in")),
+               next((i + 1 for i, n in enumerate(nomes) if n == "sintonia comercial"), 0))
+    documentacao.insert(pos, item_crono)
     inicio_feito = any(_norm(e["nome"]) in ("kick off", "check-in") and e["situacao"] == "encerrada" for e in etapas)
     if inicio_feito and not crono:
         alertas.append({"tipo": "sem_cronograma", "etapa": "Cronograma Sintético",
@@ -351,7 +357,7 @@ ul.alertas{{margin:4px 0 8px;padding-left:18px;color:#C2410C}}.nota{{font-size:8
 <div class="kpi"><b>{res['alertas']}</b><span>alertas</span></div>
 <div class="kpi"><b>{sum(p['encerradas'] for p in res['projetos'])}/{sum(p['total_etapas'] for p in res['projetos'])}</b><span>etapas encerradas</span></div></div>
 <div class="tab"><table><tr><th>Cliente / projeto</th><th>FAP</th><th>GP</th><th>Termômetro</th><th>Etapa atual</th><th>Evolução</th><th>Documentação</th><th class="n">Docs pendentes</th><th class="n">Alertas</th></tr>{linhas}</table></div>
-<div class="nota">Clique no projeto para ver as etapas e os documentos. Alertas: etapa com data final vencida e aberta; etapa encerrada ou com módulos concluídos sem o relatório previsto; Cronograma Sintético faltando depois do Kick off / Check-in. Na documentação monitorada vale o documento gerado; a aprovação aparece só como informação. Etapas de gestão (Gerenciamento do Projeto, Gestão da Trilha) não contam na evolução. Documentação monitorada: {e(', '.join(ETAPAS_MONITORADAS))} e Cronograma Sintético.</div>
+<div class="nota">Clique no projeto para ver as etapas e os documentos. Alertas: etapa com data final vencida e aberta; etapa encerrada ou com módulos concluídos sem o relatório previsto; Cronograma Sintético faltando depois do Kick off / Check-in. Na documentação monitorada vale o documento gerado; a aprovação aparece só como informação. Etapas de gestão (Gerenciamento do Projeto, Gestão da Trilha) não contam na evolução. Documentação monitorada: {e(', '.join(ETAPAS_MONITORADAS[:2]))}, Cronograma Sintético, {e(', '.join(ETAPAS_MONITORADAS[2:]))}.</div>
 <script>document.querySelectorAll("tr.proj").forEach(function(r){{r.addEventListener("click",function(){{document.getElementById("d"+r.dataset.i).classList.toggle("oculto");}});}});</script>
 </body></html>"""
     with open(caminho, "w", encoding="utf-8") as f:

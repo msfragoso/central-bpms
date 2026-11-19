@@ -189,8 +189,11 @@ def _achados_os(ja=()):
     return list(ja) + [a for a in novos if a.get("lancamento_id") not in vistos]
 
 
-def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t, consultor=None):
-    """Roda main._fluxo_principal e devolve os casos de consultor fora do projeto."""
+def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t, consultor=None, pedidos=None):
+    """
+    Roda main._fluxo_principal e devolve os casos de consultor fora do projeto.
+    Se `pedidos` (dict) vier, junta nele os casos de Pedido ambíguo (ver _juntar_pedidos).
+    """
     capturado = []
     original = m.imprimir_relatorio
 
@@ -221,7 +224,41 @@ def _rodar_fluxo(m, filtro, de_iso, ate_iso, modelo_filtro, cache_listas, t, con
             c["tarefas"].append(f["task_id"])
     for c in casos.values():
         c["datas"].sort()
+    if pedidos is not None:
+        _juntar_pedidos(capturado, pedidos)
     return list(casos.values())
+
+
+# PEDIDO AMBÍGUO (19/11/2026, pedido do Fragoso)
+# ============================================================================
+# Projeto com mais de um Pedido liberado e sem desempate por saldo: o
+# sync_engine anota linha["_pedido_ambiguo"] (com os Pedidos candidatos) e não
+# lança. A tela mostra os Pedidos; o Fragoso escolhe um e o alcance (só estas
+# tarefas, a lista inteira ou o projeto inteiro). A escolha fica em
+# clickup_sync/pedido_escolhido.json e o sync roda de novo só para aquela FAP e
+# aquelas datas.
+
+ESTADO_PEDIDO = {}   # chave (implantation_id|list_id) -> caso da última execução
+
+
+def _juntar_pedidos(relatorio, pedidos):
+    for linha in relatorio:
+        a = linha.get("_pedido_ambiguo") if isinstance(linha, dict) else None
+        if not a:
+            continue
+        chave = f"{a['implantation_id']}|{a['list_id']}"
+        c = pedidos.setdefault(chave, {"chave": chave, "implantation_id": a["implantation_id"], "fap": str(a["fap"]),
+                                       "list_id": a["list_id"], "lista": a.get("lista") or "",
+                                       "parceiro": linha.get("parceiro") or "", "candidatos": a["candidatos"],
+                                       "datas": [], "tarefas": []})
+        c["candidatos"] = a["candidatos"]
+        if a.get("data") and a["data"] not in c["datas"]:
+            c["datas"].append(a["data"])
+        if a.get("task_id") and a["task_id"] not in [x["id"] for x in c["tarefas"]]:
+            c["tarefas"].append({"id": a["task_id"], "nome": a.get("tarefa") or "", "data": a.get("data") or "",
+                                 "consultor": a.get("consultor") or ""})
+    for c in pedidos.values():
+        c["datas"].sort()
 
 
 @rota("POST", "/api/sync/executar")
@@ -267,8 +304,10 @@ def executar(req):
         m = _modulo_main()
         ui._salvar_ultima_execucao(parceiro, valor_modelo)
         cache_listas = {"dados": _cache["listas"]}
+        pedidos = {}
+        ESTADO_PEDIDO.clear()
         fora = _rodar_fluxo(m, parceiro or None, ini.isoformat(), fim.isoformat(), modelo_filtro, cache_listas, t,
-                            consultor=consultor)
+                            consultor=consultor, pedidos=pedidos)
         # 26/10/2026: OS apontada com data diferente do lançamento (também vai por e-mail)
         os_data = _achados_os()
         leituras = {"os": os_data}
@@ -290,7 +329,12 @@ def executar(req):
             msg += f" ⚠ {len(fora) - feitos} consultor(es) NÃO cadastrado(s): veja o motivo abaixo."
         if os_data:
             msg += f" ⚠ {len(os_data)} OS apontada(s) com data diferente do lançamento: veja abaixo."
-        return {"mensagem": msg, "resultado": {"fora_do_projeto": fora, "os_data_diferente": os_data}}
+        ESTADO_PEDIDO.update(pedidos)
+        if pedidos:
+            n = sum(len(c["tarefas"]) for c in pedidos.values())
+            msg += f" ⚠ {n} tarefa(s) sem lançar porque o projeto tem mais de um Pedido liberado: escolha o Pedido abaixo."
+        return {"mensagem": msg, "resultado": {"fora_do_projeto": fora, "os_data_diferente": os_data,
+                                               "pedido_ambiguo": list(pedidos.values())}}
 
     alvo = (parceiro or "todos os parceiros") + (f" · {', '.join(c['nome'] for c in consultor)}" if consultor else "")
     t = GERENTE.iniciar("sync", f"Sync tarefa ClickUp ⇄ Experience ({alvo})", trabalho, pasta=PASTAS["raiz"])
@@ -563,5 +607,59 @@ def incluir_consultor(req):
         return {"mensagem": msg + ". Sync da FAP rodado de novo; confira o relatório no log."}
 
     t = GERENTE.iniciar("sync_incluir", f"Cadastrar {caso['consultor']} na FAP {caso['fap']} e lançar", trabalho,
+                        pasta=PASTAS["raiz"])
+    return 200, {"tarefa": t.id}
+
+
+@rota("POST", "/api/sync/escolher-pedido")
+def escolher_pedido(req):
+    """
+    19/11/2026: guarda o Pedido escolhido na tela para um caso de "Pedido
+    ambíguo" e roda o sync de novo só para aquela FAP e aquelas datas.
+    corpo: {chave, application_id, alcance: "tarefas" | "lista" | "projeto", confirmar}
+    """
+    exigir_confirmacao(req)
+    from clickup_sync import pedido_escolhido
+
+    chave = str(req.corpo.get("chave") or "")
+    caso = ESTADO_PEDIDO.get(chave)
+    if not caso:
+        raise ErroUsuario("Esse caso não está na última execução do sync. Rode o sync de novo.")
+    alcance = str(req.corpo.get("alcance") or "lista")
+    if alcance not in pedido_escolhido.ESCOPOS:
+        raise ErroUsuario("Alcance da escolha inválido.")
+    escolhido = next((p for p in caso["candidatos"] if str(p["id"]) == str(req.corpo.get("application_id"))), None)
+    if not escolhido:
+        raise ErroUsuario("Esse Pedido não está entre os liberados do projeto. Rode o sync de novo.")
+
+    def trabalho(t):
+        import json
+        from nucleo import dados_arquivo
+
+        pedido_escolhido.gravar(escolhido["id"], escolhido["numero"], alcance, caso["implantation_id"],
+                                list_id=caso["list_id"], task_ids=[x["id"] for x in caso["tarefas"]])
+        alvo = {"tarefas": f"{len(caso['tarefas'])} tarefa(s)", "lista": f"a lista {caso['lista']}",
+                "projeto": f"o projeto da FAP {caso['fap']}"}[alcance]
+        t.log(f"Pedido {escolhido['numero']} escolhido para {alvo} (projeto {caso['implantation_id']}).")
+        with open(dados_arquivo("pedidos_escolhidos.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "alcance": alcance,
+                                "pedido": escolhido, **{k: caso[k] for k in ("implantation_id", "fap", "list_id",
+                                                                             "lista", "tarefas")}},
+                               ensure_ascii=False) + "\n")
+        ESTADO_PEDIDO.pop(chave, None)
+        if not caso["datas"]:
+            return {"mensagem": f"Pedido {escolhido['numero']} guardado. Rode o sync para lançar."}
+        t.log(f"Rodando o sync da FAP {caso['fap']} de {caso['datas'][0]} a {caso['datas'][-1]}...")
+        m = _modulo_main()
+        restantes = {}
+        _rodar_fluxo(m, caso["fap"], caso["datas"][0], caso["datas"][-1], None,
+                     {"dados": _cache["listas"]}, t, pedidos=restantes)
+        msg = f"Pedido {escolhido['numero']} guardado e sync da FAP {caso['fap']} rodado de novo; confira o relatório no log."
+        if restantes:
+            ESTADO_PEDIDO.update(restantes)
+            msg += " ⚠ Ainda há tarefa(s) da FAP com Pedido a escolher (outra lista ou fora do alcance escolhido)."
+        return {"mensagem": msg, "resultado": {"pedido_ambiguo": list(restantes.values())}}
+
+    t = GERENTE.iniciar("sync_pedido", f"Lançar FAP {caso['fap']} no Pedido {escolhido['numero']}", trabalho,
                         pasta=PASTAS["raiz"])
     return 200, {"tarefa": t.id}

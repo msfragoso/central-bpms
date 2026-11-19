@@ -103,6 +103,12 @@
     </div>
   </section>
 
+  <section class="card faixa oculto" id="card-pedido" style="margin-top:14px;border-left-color:#d97706">
+    <h2>⚠ Escolha o Pedido para lançar</h2>
+    <p style="color:var(--suave);margin:-4px 0 12px">Estes projetos têm mais de um Pedido liberado no Experience e o saldo não desempata, então o sync não lançou. Escolha o Pedido e até onde vale a escolha. O sync roda de novo só para essa FAP e essas datas.</p>
+    <div id="lista-pedido"></div>
+  </section>
+
   <section class="card faixa" style="margin-top:14px">
     <h2 data-texto="sync.semos.titulo">Lançamentos sem apontamento de OS</h2>
     <p style="color:var(--suave);margin:-4px 0 12px" data-texto="sync.semos.descricao">Depois do fechamento das OS, lista no Experience os lançamentos que ficaram pendentes (sem OS), só de projetos Em Andamento. A consulta não altera nada; para limpar, marque os lançamentos e use "Excluir marcados do Experience" (o ClickUp não é alterado).</p>
@@ -171,7 +177,7 @@
   }
   $("#parceiro").addEventListener("input", contar);
 
-  const travar = (sim) => { $("#btn-executar").disabled = sim; $("#btn-sem-os").disabled = sim; if (typeof desenharFora === "function") desenharFora(); };
+  const travar = (sim) => { $("#btn-executar").disabled = sim; $("#btn-sem-os").disabled = sim; if (typeof desenharFora === "function") desenharFora(); if (typeof desenharPedido === "function") desenharPedido(); };
 
   // ---------------- consultor fora do projeto (cadastro automático; só "tentar de novo" pede confirmação)
   let fora = [], foraSituacao = {};
@@ -212,8 +218,55 @@
       <td>${esc(a.horario)}</td><td>${esc(a.procedimento)}</td><td>${esc(a.pedido)}</td>
       <td>${a.clickup ? `<a href="https://app.clickup.com/t/${esc(a.clickup)}" target="_blank" rel="noopener">${esc(a.clickup)}</a>` : "–"}</td></tr>`).join("");
   };
+  // ---------------- Pedido ambíguo (19/11/2026): escolher o Pedido e lançar
+  let pedidoCasos = [], pedidoEmCurso = null;
+  const ALCANCES = { lista: "Todas as tarefas desta lista do ClickUp", tarefas: "Só estas tarefas", projeto: "Todo o projeto (todas as listas da FAP)" };
+  function desenharPedido() {
+    $("#card-pedido").classList.toggle("oculto", !pedidoCasos.length);
+    const travado = $("#btn-executar").disabled;
+    $("#lista-pedido").innerHTML = pedidoCasos.map((c, i) => `<div class="card" style="margin:0 0 12px;padding:12px" data-caso="${i}">
+      <div><b>${esc(c.parceiro || c.lista)}</b> · FAP ${esc(c.fap)} · projeto ${esc(c.implantation_id)}<br>
+        <span style="color:var(--suave);font-size:13px">Lista: ${esc(c.lista)}</span></div>
+      <div style="margin:8px 0;font-size:13px">${c.tarefas.map((x) => `<a href="https://app.clickup.com/t/${encodeURIComponent(x.id)}" target="_blank" rel="noopener">${esc(x.nome || "#" + x.id)}</a> · ${esc(dataBr(x.data))}${x.consultor ? " · " + esc(x.consultor) : ""}`).join("<br>")}</div>
+      <div class="tabela-caixa"><table>
+        <thead><tr><th></th><th>Pedido</th><th>Descrição</th><th>Natureza</th><th class="centro">Negociado</th><th class="centro">Consumido</th><th class="centro">Saldo</th></tr></thead>
+        <tbody>${c.candidatos.map((p) => `<tr><td class="centro"><input type="radio" name="ped-${i}" value="${esc(p.id)}" aria-label="Pedido ${esc(p.numero)}"></td>
+          <td>${esc(p.numero)}</td><td>${esc(p.descricao || "–")}</td><td>${esc(p.natureza)}</td>
+          <td class="centro">${esc(p.negociado || "–")}</td><td class="centro">${esc(p.consumido || "–")}</td><td class="centro">${esc(p.saldo || "–")}</td></tr>`).join("")}</tbody>
+      </table></div>
+      <div class="campos" style="margin-top:8px;align-items:end">
+        <div class="campo c6"><label for="alc-${i}">Vale para</label><select id="alc-${i}">${Object.entries(ALCANCES).map(([v, r]) => `<option value="${v}">${esc(r)}</option>`).join("")}</select></div>
+        <div class="campo c6"><button class="btn" data-pedido="${i}" ${travado || pedidoEmCurso ? "disabled" : ""}>Usar este Pedido e lançar</button></div>
+      </div></div>`).join("");
+  }
+  $("#lista-pedido").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-pedido]"); if (!b) return;
+    const i = Number(b.dataset.pedido), c = pedidoCasos[i]; if (!c) return;
+    const marcado = document.querySelector(`input[name="ped-${i}"]:checked`);
+    if (!marcado) return toast("Marque o Pedido que deve ser usado.", "erro");
+    const p = c.candidatos.find((x) => String(x.id) === marcado.value), alcance = $(`#alc-${i}`).value;
+    const ok = await confirmar(`Lançar no Pedido ${p.numero}?`,
+      `<b>Projeto:</b> ${esc(c.parceiro || c.lista)} · FAP ${esc(c.fap)}<br><b>Pedido:</b> ${esc(p.numero)}${p.descricao ? " · " + esc(p.descricao) : ""} (saldo ${esc(p.saldo || "?")})<br><b>Vale para:</b> ${esc(ALCANCES[alcance])}`
+      + `<div class="aviso">A escolha fica guardada e o sync usa esse Pedido ${alcance === "tarefas" ? "nessas tarefas" : alcance === "lista" ? "em toda tarefa desta lista" : "em toda tarefa do projeto"} enquanto ele estiver liberado. Depois roda o sync só da FAP ${esc(c.fap)} de ${esc(dataBr(c.datas[0]))} a ${esc(dataBr(c.datas[c.datas.length - 1]))}, que cria os lançamentos.</div>`,
+      { botao: "Usar e lançar" });
+    if (!ok) return;
+    pedidoEmCurso = c.chave; travar(true); desenharPedido();
+    BPMS.iniciar("/api/sync/escolher-pedido", { chave: c.chave, application_id: p.id, alcance, confirmar: true }, el, aoTerminarPedido);
+  });
+  const aoTerminarPedido = (t) => {
+    const feito = t && t.estado === "concluida";
+    if (feito) {
+      pedidoCasos = pedidoCasos.filter((x) => x.chave !== pedidoEmCurso);
+      const novos = (t.resultado && t.resultado.pedido_ambiguo) || [];
+      novos.forEach((n) => { if (!pedidoCasos.some((x) => x.chave === n.chave)) pedidoCasos.push(n); });
+    }
+    pedidoEmCurso = null; travar(false); desenharPedido();
+  };
+
   const aoTerminarSync = (t) => {
     travar(false);
+    pedidoCasos = (t && t.resultado && t.resultado.pedido_ambiguo) || []; desenharPedido();
+    if (pedidoCasos.length) $("#card-pedido").scrollIntoView({ behavior: "smooth" });
     desenharOsData((t && t.resultado && t.resultado.os_data_diferente) || []);
     if (t && t.resultado && t.resultado.fora_do_projeto) {
       fora = t.resultado.fora_do_projeto; foraSituacao = {}; desenharFora();
@@ -377,7 +430,7 @@
       resumoConsultores();
       contar();
     } catch (e) { toast(e.message, "erro"); }
-    BPMS.retomar(["sync", "sync_sem_os", "sync_sem_os_excluir", "sync_incluir"], el, (t) => (t && t.tipo === "sync_sem_os" ? aoTerminarSemOs(t) : t && t.tipo === "sync_sem_os_excluir" ? aoTerminarExcluir(t) : t && t.tipo === "sync" ? aoTerminarSync(t) : travar(false)), () => travar(true));
+    BPMS.retomar(["sync", "sync_sem_os", "sync_sem_os_excluir", "sync_incluir", "sync_pedido"], el, (t) => (t && t.tipo === "sync_sem_os" ? aoTerminarSemOs(t) : t && t.tipo === "sync_sem_os_excluir" ? aoTerminarExcluir(t) : t && t.tipo === "sync" ? aoTerminarSync(t) : travar(false)), () => travar(true));
   })();
 })();
 </script>
