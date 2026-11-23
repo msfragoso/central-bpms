@@ -8,6 +8,15 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.21.0 — 23/11/2026
+- Tela nova "Relatório de Status Report": horas de um parceiro no período, por frente de trabalho (ou etapa) e
+  por consultor. Lê as OS no Sankhya-Om e as tarefas da pasta do parceiro no ClickUp (só leitura), mostra uma
+  prévia para conferir e ajustar (frente, consultor, atividade, incluir ou deixar de fora, com o motivo) e gera o
+  relatório em PDF, Excel e HTML. As horas bonificadas em OS e em planilha aparecem separadas, sem duplicar
+  lançamento. Os arquivos ficam só neste computador, em dados\relatorios.
+- Conferência de OS: o Marcelo entra na busca das OS pelo nome de usuário no OM. Se o OM recusar essa busca, a
+  conferência segue só com a lista de executantes, como antes, e avisa no log.
+
 ## 1.20.0 — 23/11/2026
 - Permissões ClickUp: dá para escolher vários usuários de uma vez. A lista mostra todos os usuários para marcar
   com clique (o campo de cima só filtra); o mesmo nível e as mesmas pastas/listas valem para todos, e a Central

@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relatório de Status Report</title>
+<link rel="stylesheet" href="assets/padrao.css">
+<link rel="icon" href="assets/icones/central.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icones/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icones/apple-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a7a52">
+<script src="assets/login.js"></script>
+<style>
+  .sr-tab td { vertical-align: top; }
+  .sr-tab input[type=text], .sr-tab select { width: 100%; min-width: 0; padding-left: 6px; padding-right: 4px; }
+  #introducao { min-height: 70px; }
+  table.sr-lanc { table-layout: fixed; }
+  .sr-tab textarea { width: 100%; min-height: 76px; resize: vertical; font: inherit; font-size: 12px; }
+  .sr-tab tr.fora td { opacity: .55; }
+  .sr-tab tr.fora td:first-child, .sr-tab tr.fora .motivo { opacity: 1; }
+  .motivo { display: inline-block; margin-top: 4px; font-size: 11px; color: #b45309; }
+  .tarefa { display: block; margin-top: 3px; font-size: 11px; color: var(--suave); }
+  .totais { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0 10px; font-size: 13px; }
+  .totais b { font-size: 16px; }
+  .oculto { display: none !important; }
+</style>
+</head>
+<body>
+<main class="pagina">
+  <div class="cabecalho">
+    <div>
+      <h1 data-texto="status_report.titulo">Relatório de Status Report</h1>
+      <p data-texto="status_report.subtitulo">Horas de um parceiro no período, por frente de trabalho (ou etapa) e por consultor</p>
+    </div>
+    <span class="ultimo-uso" data-ultimo-uso="status_report"></span>
+  </div>
+  <p class="explicacao" data-texto="card.status_report.descricao">Lê as OS no Sankhya-Om e as tarefas da pasta do parceiro no ClickUp, mostra uma prévia para você conferir e ajustar, e gera o relatório em PDF e Excel. Nada é alterado nos sistemas e os arquivos ficam só neste computador.</p>
+
+  <section class="card faixa">
+    <h2>1. Parceiro e período</h2>
+    <div class="campos">
+      <div class="campo c6"><label for="pasta">Pasta do parceiro no ClickUp</label><input type="text" id="pasta" placeholder="Digite para buscar"></div>
+      <div class="campo c3"><label for="de">De</label><input type="text" id="de"></div>
+      <div class="campo c3"><label for="ate">Até</label><input type="text" id="ate"></div>
+      <div class="campo c6"><label for="nome-om">Nome no Sankhya-Om (opcional)</label><input type="text" id="nome-om" placeholder="Só se nenhuma OS das tarefas for achada"></div>
+    </div>
+    <div class="acoes">
+      <button class="btn" id="btn-buscar" type="button">Buscar OS e tarefas</button>
+    </div>
+    <pre class="log" id="log" style="margin-top:12px"></pre>
+    <div class="status" id="status"><span class="girando"></span><span id="status-texto">Pronto.</span></div>
+  </section>
+
+  <section class="card faixa oculto" id="prev" style="margin-top:16px">
+    <h2>2. Conferir antes de gerar</h2>
+    <p class="ajuda" id="prev-origem" style="color:var(--suave);margin:-4px 0 10px"></p>
+    <div class="campos">
+      <div class="campo c6"><label for="titulo">Título</label><input type="text" id="titulo" value="Relatório de status de atendimentos"></div>
+      <div class="campo c6"><label for="destinatario">Saudação</label><input type="text" id="destinatario" value="Prezados,"></div>
+      <div class="campo c6"><label for="parceiro">Parceiro (como aparece no relatório)</label><input type="text" id="parceiro"></div>
+      <div class="campo c6"><label for="parceiro-nome">Nome curto do parceiro</label><input type="text" id="parceiro-nome"></div>
+      <div class="campo c6"><label for="negociacao">Negociação</label><input type="text" id="negociacao"></div>
+      <div class="campo c3"><label for="gp">Gerente de projeto (opcional)</label><input type="text" id="gp"></div>
+      <div class="campo c3"><label for="agrupar">Agrupar por</label><select id="agrupar"><option>Frente</option><option>Etapa</option></select></div>
+      <div class="campo" style="grid-column:1/-1"><label for="introducao">Texto de abertura (opcional; vazio = texto automático)</label><textarea id="introducao" rows="3" style="width:100%"></textarea></div>
+    </div>
+
+    <div class="totais" id="totais"></div>
+
+    <h2 style="margin-top:8px" id="tit-frentes">Frentes</h2>
+    <p class="ajuda" style="color:var(--suave);margin:-4px 0 10px">Troque o nome aqui para renomear em todos os lançamentos de uma vez. Para juntar duas, dê o mesmo nome.</p>
+    <div class="tabela-caixa">
+      <table class="sr-tab"><thead><tr><th>Nome no relatório</th><th class="centro">Lançamentos</th><th class="centro">Horas</th></tr></thead>
+      <tbody id="corpo-frentes"></tbody></table>
+    </div>
+
+    <h2 style="margin-top:16px">Lançamentos</h2>
+    <div class="acoes" style="margin:-4px 0 8px">
+      <label style="font-size:13px"><input type="checkbox" id="ver-fora" checked> Mostrar os que ficaram fora</label>
+    </div>
+    <div class="tabela-caixa">
+      <table class="sr-tab sr-lanc">
+        <thead><tr><th style="width:44px">Usar</th><th style="width:108px">Data</th><th style="width:72px">OS</th><th style="width:150px">Consultor</th><th style="width:190px" id="th-frente">Frente</th><th style="width:140px">Tipo</th><th style="width:62px">Horas</th><th style="width:118px">Horário</th><th>Atividade</th></tr></thead>
+        <tbody id="corpo"></tbody>
+      </table>
+    </div>
+    <datalist id="lista-frentes"></datalist>
+
+    <div class="acoes" style="margin-top:14px">
+      <button class="btn" id="btn-gerar" type="button">Gerar relatório (PDF + Excel)</button>
+    </div>
+    <pre class="log" id="log2" style="margin-top:12px"></pre>
+    <div class="status" id="status2"><span class="girando"></span><span id="status-texto2">Pronto.</span></div>
+    <div class="arquivos" id="arquivos"></div>
+  </section>
+</main>
+<script src="assets/comum.js"></script>
+<script>
+(() => {
+  const { $, $$, get, post, esc, toast, mascaraData, dataValida, garantirOm } = BPMS;
+  BPMS.montarTopo("status_report");
+  const el1 = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto") };
+  const el2 = { log: $("#log2"), status: $("#status2"), statusTexto: $("#status-texto2"), arquivos: $("#arquivos") };
+  const TIPOS = { OS: "Horas em OS", BONIF_OS: "Bonificado em OS", PLANILHA: "Bonificado em planilha" };
+  const num = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  let pastas = [], dados = null;
+
+  // período padrão: do dia 1 do mês passado até hoje
+  const hoje = new Date(), ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  $("#de").value = ini.toLocaleDateString("pt-BR"); $("#ate").value = hoje.toLocaleDateString("pt-BR");
+  mascaraData($("#de")); mascaraData($("#ate"));
+
+  const campoPasta = BPMS.busca($("#pasta"), [], {});
+  get("/api/status-report/pastas").then((r) => { pastas = r.pastas; campoPasta.definirOpcoes(pastas.map((p) => p.nome)); })
+    .catch((e) => toast("ClickUp: " + e.message, "erro"));
+
+  // ---------------------------------------------------------------- prévia
+  function totais() {
+    const usados = dados.linhas.filter((l) => l.incluir);
+    const soma = (f) => usados.filter(f).reduce((s, l) => s + Number(l.horas || 0), 0);
+    $("#totais").innerHTML = `<span><b>${num(soma(() => true))} h</b> no relatório</span>
+      <span><b>${usados.filter((l) => l.os).length}</b> OS · ${num(soma((l) => l.tipo === "OS"))} h em OS</span>
+      ${soma((l) => l.tipo === "BONIF_OS") ? `<span>${num(soma((l) => l.tipo === "BONIF_OS"))} h bonificadas em OS</span>` : ""}
+      ${soma((l) => l.tipo === "PLANILHA") ? `<span>${num(soma((l) => l.tipo === "PLANILHA"))} h bonificadas em planilha</span>` : ""}
+      <span>${dados.linhas.length - usados.length} fora</span>`;
+    const fr = {};
+    usados.forEach((l) => { fr[l.frente] = fr[l.frente] || { n: 0, h: 0 }; fr[l.frente].n++; fr[l.frente].h += Number(l.horas || 0); });
+    const ordem = Object.keys(fr).sort((a, b) => fr[b].h - fr[a].h);
+    $("#corpo-frentes").innerHTML = ordem.map((f) => `<tr><td><input type="text" data-frente="${esc(f)}" value="${esc(f)}"></td><td class="centro">${fr[f].n}</td><td class="centro">${num(fr[f].h)}</td></tr>`).join("")
+      || `<tr><td colspan="3" class="vazio-tabela">Nenhum lançamento marcado.</td></tr>`;
+    $("#lista-frentes").innerHTML = [...new Set(dados.linhas.map((l) => l.frente))].map((f) => `<option value="${esc(f)}">`).join("");
+  }
+
+  function desenhar() {
+    const verFora = $("#ver-fora").checked;
+    $("#corpo").innerHTML = dados.linhas.map((l, i) => (!l.incluir && !verFora && l.motivo) ? "" : `
+      <tr class="${l.incluir ? "" : "fora"}" data-i="${i}">
+        <td class="centro"><input type="checkbox" data-c="incluir" ${l.incluir ? "checked" : ""}></td>
+        <td><input type="text" data-c="data" value="${esc(l.data)}"></td>
+        <td>${esc(l.os || "—")}</td>
+        <td><input type="text" data-c="consultor" value="${esc(l.consultor)}"></td>
+        <td><input type="text" data-c="frente" list="lista-frentes" value="${esc(l.frente)}">${l.tarefa ? `<span class="tarefa" title="Tarefa no ClickUp">${esc(l.tarefa)}</span>` : ""}</td>
+        <td><select data-c="tipo">${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}" ${k === l.tipo ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+        <td><input type="text" data-c="horas" value="${esc(String(l.horas).replace(".", ","))}"></td>
+        <td><input type="text" data-c="horario" value="${esc(l.horario || "")}"></td>
+        <td><textarea data-c="atividade">${esc(l.atividade)}</textarea>${l.motivo ? `<span class="motivo">⚠ ${esc(l.motivo)}</span>` : ""}</td>
+      </tr>`).join("");
+    totais();
+  }
+
+  function mostrar(r) {
+    dados = r;
+    $("#prev").classList.remove("oculto");
+    $("#prev-origem").textContent = `Busca de ${r.buscado_em}: pasta ${r.pasta}, ${r.de} a ${r.ate}. Parceiro no Om: ${r.parceiro.codigo} - ${r.parceiro.nome}.`;
+    const c = r.cabecalho || {};
+    const nomeCurto = c.parceiro_nome || r.parceiro.nome.replace(/\s+/g, " ").trim();
+    $("#parceiro").value = c.parceiro || `${r.parceiro.codigo} - ${nomeCurto}`;
+    $("#parceiro-nome").value = nomeCurto;
+    $("#negociacao").value = c.negociacao ?? (r.faps.length ? `FAP ${r.faps.join(", ")}` : "");
+    $("#gp").value = c.gp || "";
+    $("#titulo").value = c.titulo || "Relatório de status de atendimentos";
+    $("#destinatario").value = c.destinatario || "Prezados,";
+    $("#introducao").value = c.introducao || "";
+    $("#agrupar").value = c.agrupar || r.agrupar || "Frente";
+    rotuloGrupo();
+    desenhar();
+  }
+  function rotuloGrupo() {
+    const g = $("#agrupar").value;
+    $("#th-frente").textContent = g; $("#tit-frentes").textContent = g === "Etapa" ? "Etapas" : "Frentes";
+  }
+  $("#agrupar").onchange = rotuloGrupo;
+  $("#ver-fora").onchange = desenhar;
+
+  $("#corpo").addEventListener("change", (e) => {
+    const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+    const l = dados.linhas[+tr.dataset.i], c = e.target.dataset.c;
+    if (c === "incluir") { l.incluir = e.target.checked; tr.classList.toggle("fora", !l.incluir); }
+    else if (c === "horas") l.horas = Number(String(e.target.value).replace(",", ".")) || 0;
+    else l[c] = e.target.value;
+    if (c === "consultor" && l.login) dados.linhas.forEach((o) => { if (o.login === l.login) o.consultor = l.consultor; });
+    if (["incluir", "horas", "frente", "consultor"].includes(c)) { c === "consultor" ? desenhar() : totais(); }
+  });
+  $("#corpo-frentes").addEventListener("change", (e) => {
+    const antigo = e.target.dataset.frente, novo = e.target.value.trim();
+    if (!novo) { e.target.value = antigo; return; }
+    dados.linhas.forEach((l) => { if (l.frente === antigo) l.frente = novo; });
+    desenhar();
+  });
+
+  // ---------------------------------------------------------------- ações
+  const travar = (sim) => { $("#btn-buscar").disabled = sim; $("#btn-gerar").disabled = sim; };
+  $("#btn-buscar").onclick = async () => {
+    const p = pastas.find((x) => x.nome === $("#pasta").value);
+    if (!p) return toast("Escolha a pasta do parceiro na lista.", "erro");
+    if (!dataValida($("#de").value) || !dataValida($("#ate").value)) return toast("Datas inválidas. Use dd/mm/aaaa.", "erro");
+    if (dados && !(await BPMS.confirmar("Buscar de novo?", "A prévia atual (com seus ajustes) será substituída pela nova busca.", { botao: "Buscar" }))) return;
+    if (!(await garantirOm({ precisaConsulta: true }))) return;
+    travar(true);
+    BPMS.iniciar("/api/status-report/buscar", { pasta_id: p.id, pasta_nome: p.nome, de: $("#de").value, ate: $("#ate").value, nome_om: $("#nome-om").value },
+      el1, (t) => { travar(false); if (t && t.estado === "concluida" && t.resultado) mostrar(t.resultado); });
+  };
+
+  $("#btn-gerar").onclick = () => {
+    if (!dados) return;
+    const cab = { titulo: $("#titulo").value, destinatario: $("#destinatario").value, parceiro: $("#parceiro").value,
+      parceiro_nome: $("#parceiro-nome").value, negociacao: $("#negociacao").value, gp: $("#gp").value,
+      agrupar: $("#agrupar").value, introducao: $("#introducao").value, de: dados.de, ate: dados.ate };
+    dados.cabecalho = cab;
+    travar(true);
+    BPMS.iniciar("/api/status-report/gerar", { cabecalho: cab, linhas: dados.linhas }, el2, () => travar(false));
+  };
+
+  get("/api/status-report/rascunho").then((r) => {
+    if (r && r.linhas) {
+      mostrar(r);
+      const p = (r.pasta || ""); $("#pasta").value = p; $("#de").value = r.de; $("#ate").value = r.ate;
+    }
+  }).catch(() => {});
+  BPMS.retomar(["status_report"], el1, (t) => { travar(false); if (t && t.resultado) mostrar(t.resultado); }, () => travar(true));
+  BPMS.retomar(["status_report_gerar"], el2, () => travar(false), () => travar(true));
+})();
+</script>
+</body>
+</html>

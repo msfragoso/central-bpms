@@ -29,6 +29,30 @@ def executantes():
     return [int(x) for x in lista]
 
 
+# 23/11/2026 (Fragoso): Marcelo liberado na Conferência de OS. O CODUSU dele no OM não estava
+# na lista acima e não é conhecido aqui, então entra pelo nome de usuário (NOMEUSU, padrão
+# NOME.SOBRENOME). Dá para trocar em config.json, chave "om_executantes_nomes" (padrões LIKE).
+EXECUTANTES_NOMES_PADRAO = ["MARCELO%FRAGOSO%"]
+_SUBCONSULTA_NOMES_OK = True  # vira False se o OM recusar a subconsulta (aí segue só com os CODUSU)
+
+
+def executantes_nomes():
+    lista = CONFIG.get("om_executantes_nomes")
+    if lista is None:
+        lista = EXECUTANTES_NOMES_PADRAO
+    # só letras, números, ponto, % e _ (vai dentro do SQL do OM)
+    return [p for p in (re.sub(r"[^A-Z0-9.%_]", "", str(x).upper()) for x in lista) if p.strip("%")]
+
+
+def _filtro_executantes(codusus):
+    filtro = f"this.CODUSU IN ({','.join(map(str, codusus))})"
+    nomes = executantes_nomes() if _SUBCONSULTA_NOMES_OK else []
+    if nomes:
+        likes = " OR ".join(f"UPPER(U.NOMEUSU) LIKE '{n}'" for n in nomes)
+        filtro = f"({filtro} OR this.CODUSU IN (SELECT U.CODUSU FROM TSIUSU U WHERE {likes}))"
+    return filtro
+
+
 def _hhmm(valor):
     """800 -> '08:00', 1830 -> '18:30' (formato HHMM do OM)."""
     s = re.sub(r"\D", "", str(valor or ""))
@@ -55,8 +79,18 @@ def buscar_os(data_ini, data_fim, log=print):
     # 26/10/2026 (caso Jean, OS 7184247 de 15/10 sumida da conferência de 01 a 20/10): o OM
     # devolve no máximo 150 linhas por consulta e informa total=150, sem avisar que cortou.
     # Consulta em blocos de até 7 dias; bloco que bater no teto é dividido de novo (até 1 dia).
+    global _SUBCONSULTA_NOMES_OK
+    _SUBCONSULTA_NOMES_OK = True
     linhas, i = _buscar_em_blocos(codusus, data_ini, data_fim, log), {c: n for n, c in enumerate(CAMPOS)}
     total = len(linhas)
+    if executantes_nomes():
+        if not _SUBCONSULTA_NOMES_OK:
+            log("⚠ O OM não aceitou a busca do Marcelo pelo nome: as OS dele ficaram de fora desta consulta.")
+        else:
+            achados = sorted({str(l[i["Executante.NOMEUSU"]]) for l in linhas
+                              if "MARCELO" in str(l[i["Executante.NOMEUSU"]]).upper()})
+            n = sum(1 for l in linhas if "MARCELO" in str(l[i["Executante.NOMEUSU"]]).upper())
+            log(f"  Marcelo: {n} OS no período" + (f" ({', '.join(achados)})." if achados else "."))
     return _montar_df(linhas, i, total, log)
 
 
@@ -69,17 +103,26 @@ def _consultar_bloco(codusus, data_ini, data_fim, campos=None):
         "tryJoinedFields": True, "parallelLoader": True,
         "crudListener": "br.com.sankhya.mgeserv.model.helpper.OSCRUDListener",
         "criteria": {
-            "expression": (f"(this.INICEXEC >= ? AND this.INICEXEC <= ? AND this.CODUSU IN "
-                           f"({','.join(map(str, codusus))})) AND (ItemOrdemServico.TEMPGASTO > 0)"),
+            "expression": (f"(this.INICEXEC >= ? AND this.INICEXEC <= ? AND {_filtro_executantes(codusus)}) "
+                           f"AND (ItemOrdemServico.TEMPGASTO > 0)"),
             "parameters": [{"type": "D", "value": f"{data_ini:%d/%m/%Y}"},
                            {"type": "D", "value": f"{data_fim:%d/%m/%Y}"}],
         },
         "txProperties": {"nome.tela": "ConsultaOs"},
         "ignoreListenerMethods": "interceptMetadata", "useDefaultRowsLimit": False,
     }
-    resp = OM.chamar("DatasetSP.loadRecords", corpo,
-                     {"application": "ConsultaOS", "resourceID": "br.com.sankhya.os.con.consultaOs",
-                      "allowConcurrentCalls": "true"})
+    extra = {"application": "ConsultaOS", "resourceID": "br.com.sankhya.os.con.consultaOs",
+             "allowConcurrentCalls": "true"}
+    global _SUBCONSULTA_NOMES_OK
+    try:
+        resp = OM.chamar("DatasetSP.loadRecords", corpo, extra)
+    except Exception as e:
+        if not (_SUBCONSULTA_NOMES_OK and executantes_nomes()):
+            raise
+        # OM recusou a busca pelo nome (Marcelo): avisa e segue com a lista de CODUSU, como antes.
+        _SUBCONSULTA_NOMES_OK = False
+        print(f"⚠ OM recusou a busca de executante pelo nome ({e}); seguindo só com a lista de CODUSU.")
+        return _consultar_bloco(codusus, data_ini, data_fim, campos)
     corpo_resp = resp.get("responseBody") or {}
     return corpo_resp.get("result") or []
 
