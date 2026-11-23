@@ -34,12 +34,13 @@
 
   <div class="grade duas" style="margin-top:14px">
     <section class="card faixa">
-      <h2>2. Usuário e nível</h2>
+      <h2>2. Usuários e nível</h2>
       <div class="campos">
-        <div class="campo"><label for="filtro-usuario">Usuário</label>
-          <input id="filtro-usuario" placeholder="digite o nome ou e-mail…" autocomplete="off">
+        <div class="campo"><label for="filtro-usuario">Usuários (pode escolher vários)</label>
+          <input id="filtro-usuario" placeholder="filtrar por nome, e-mail ou papel…" autocomplete="off">
           <input type="hidden" id="usuario">
-          <div id="sugestoes" class="oculto" style="border:1px solid var(--linha);border-radius:8px;margin-top:4px;max-height:220px;overflow:auto;background:var(--card)"></div>
+          <div id="sugestoes" style="border:1px solid var(--linha);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;background:var(--card)"></div>
+          <span class="ajuda">Clique nos nomes para marcar ou desmarcar.</span>
           <div id="usuario-escolhido" class="ajuda" style="margin-top:6px"></div>
         </div>
         <div class="campo"><label for="nivel">Nível de acesso</label><select id="nivel"></select>
@@ -83,7 +84,7 @@
   const { $, get, post, esc, toast, confirmar, normalizar } = BPMS;
   BPMS.montarTopo("permissoes");
   const el = { log: $("#log"), status: $("#status"), statusTexto: $("#status-texto"), arquivos: $("#arquivos") };
-  let dados = null, marcadas = new Set(), atuais = { pastas: {}, listas: {} }, situacao = {}, ocupado = false;
+  let dados = null, marcadas = new Set(), escolhidos = [], atuais = { pastas: {}, listas: {} }, situacao = {}, ocupado = false;
   // Pastas abertas na árvore: continuam abertas quando a tela redesenha (marcar lista, ler acessos...).
   const abertas = new Set();
   const NOMES_NIVEL = {};
@@ -115,30 +116,55 @@
       .map(([nv, qt]) => etiquetaNivel(+nv, `${qt} lista(s) só na lista: ${nomeNivel(+nv)}`, "Listas desta pasta com permissão dada direto na lista"))
       .join(" ");
   }
-  // Usuário (21/10/2026): só aparecem sugestões enquanto digita; depois de escolher,
-  // a tela mostra apenas o usuário selecionado.
+  // Usuários (23/11/2026): dá para escolher vários. O que está em destaque (#usuario) é o
+  // que aparece na árvore em "Ver acessos atuais" e no "PDF deste usuário"; clique no nome para trocar.
+  const membroDe = (id) => dados.membros.find((x) => x.id === id) || { id, nome: id, papel: "?", email: "" };
+  // 23/11/2026 (Fragoso): lista com TODOS os usuários, marcando com clique; o campo de cima só filtra.
   function desenharUsuarios() {
     const q = normalizar($("#filtro-usuario").value);
     const caixa = $("#sugestoes");
-    if (!q) { caixa.classList.add("oculto"); caixa.innerHTML = ""; return; }
-    const achados = dados.membros.filter((m) => normalizar(`${m.nome} ${m.email} ${m.papel}`).includes(q)).slice(0, 8);
+    const achados = dados.membros.filter((m) => !q || normalizar(`${m.nome} ${m.email} ${m.papel}`).includes(q));
     caixa.innerHTML = achados.length
-      ? achados.map((m) => `<div data-u="${esc(m.id)}" style="padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--linha)">${esc(m.nome)} <span class="ajuda">· ${esc(m.papel)}${m.email ? " · " + esc(m.email) : ""}</span></div>`).join("")
+      ? achados.map((m) => `<label class="checar" data-u="${esc(m.id)}" style="display:block;padding:5px 10px;cursor:pointer;border-bottom:1px solid var(--linha);margin:0">
+          <input type="checkbox" ${escolhidos.includes(m.id) ? "checked" : ""}> ${esc(m.nome)} <span class="ajuda">· ${esc(m.papel)}${m.email ? " · " + esc(m.email) : ""}</span></label>`).join("")
       : `<div class="ajuda" style="padding:6px 10px">Nenhum usuário encontrado.</div>`;
-    caixa.classList.remove("oculto");
+  }
+  function desenharEscolhidos() {
+    const foco = $("#usuario").value;
+    $("#usuario-escolhido").innerHTML = escolhidos.length
+      ? `<div>Selecionados (${escolhidos.length}): ${escolhidos.map((id) => { const m = membroDe(id); return `<span data-foco="${esc(id)}" title="${esc(m.papel + (m.email ? " · " + m.email : ""))} · clique para ver os acessos dele na árvore"
+          style="display:inline-block;margin:3px 4px 0 0;padding:2px 4px 2px 8px;border-radius:12px;cursor:pointer;border:1px solid ${id === foco ? "var(--marca,#0a7a52)" : "var(--linha)"};${id === foco ? "font-weight:600;" : ""}">${esc(m.nome)}
+          <button type="button" data-tira="${esc(id)}" title="Tirar da seleção" style="border:0;background:none;cursor:pointer;color:var(--suave)">✕</button></span>`; }).join("")}
+          <button class="btn secundario pequeno" type="button" id="btn-limpar-usuarios">limpar</button></div>`
+        + (escolhidos.length > 1 ? `<div class="ajuda" style="margin-top:4px">O mesmo nível e as mesmas pastas/listas valem para todos. Na árvore aparecem os acessos de <b>${esc(membroDe(foco).nome)}</b> (clique em outro nome para trocar).</div>` : "")
+      : "";
+  }
+  function focar(id) {
+    if ($("#usuario").value !== id) { atuais = { pastas: {}, listas: {} }; situacao = {}; }
+    $("#usuario").value = id || "";
+    desenharEscolhidos(); desenharArvore();
   }
   function escolherUsuario(id) {
-    const m = dados.membros.find((x) => x.id === id);
-    $("#usuario").value = m ? m.id : "";
-    $("#filtro-usuario").value = "";
+    if (id && escolhidos.includes(id)) return tirarUsuario(id);
+    if (id) escolhidos.push(id);
     desenharUsuarios();
-    $("#usuario-escolhido").innerHTML = m
-      ? `Selecionado: <b>${esc(m.nome)}</b> · ${esc(m.papel)}${m.email ? " · " + esc(m.email) : ""} <button class="btn secundario pequeno" type="button" id="btn-trocar-usuario">trocar</button>`
-      : "";
-    atuais = { pastas: {}, listas: {} }; situacao = {}; desenharArvore();
+    focar(id);
   }
-  $("#sugestoes").addEventListener("click", (e) => { const d = e.target.closest("[data-u]"); if (d) escolherUsuario(d.dataset.u); });
-  $("#usuario-escolhido").addEventListener("click", (e) => { if (e.target.id === "btn-trocar-usuario") { escolherUsuario(""); $("#filtro-usuario").focus(); } });
+  function tirarUsuario(id) {
+    escolhidos = escolhidos.filter((x) => x !== id);
+    desenharUsuarios();
+    focar($("#usuario").value === id ? (escolhidos[0] || "") : $("#usuario").value);
+  }
+  $("#sugestoes").addEventListener("click", (e) => {
+    const d = e.target.closest("[data-u]"); if (!d) return;
+    e.preventDefault();  // o label marcaria a caixa sozinho; quem decide é escolherUsuario
+    escolherUsuario(d.dataset.u);
+  });
+  $("#usuario-escolhido").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-tira]"); if (t) { e.stopPropagation(); return tirarUsuario(t.dataset.tira); }
+    if (e.target.id === "btn-limpar-usuarios") { escolhidos = []; desenharUsuarios(); return focar(""); }
+    const f = e.target.closest("[data-foco]"); if (f) focar(f.dataset.foco);
+  });
   $("#filtro-usuario").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { const d = $("#sugestoes [data-u]"); if (d) { e.preventDefault(); escolherUsuario(d.dataset.u); } }
   });
@@ -165,7 +191,7 @@
     $("#arvore").innerHTML = filhas("").map(pasta).join("");
     const np = [...marcadas].filter((k) => k.startsWith("folder:")).length, nl = marcadas.size - np;
     $("#contagem").textContent = `${np} pasta(s) e ${nl} lista(s) marcada(s)`;
-    $("#btn-aplicar").disabled = ocupado || !marcadas.size || !$("#usuario").value;
+    $("#btn-aplicar").disabled = ocupado || !marcadas.size || !escolhidos.length;
     $("#btn-pdf-usuario").disabled = ocupado || !$("#usuario").value;
   }
   // 23/10/2026: ao marcar/desmarcar uma PASTA, pergunta sobre as listas ativas dela
@@ -283,50 +309,105 @@
     BPMS.iniciar("/api/permissoes/relatorio", { workspace: dados.workspace }, el, () => travar(false));
   };
   $("#btn-aplicar").onclick = async () => {
-    const u = $("#usuario").value; if (!u) return toast("Escolha o usuário.", "erro");
+    const ids = escolhidos.slice(); if (!ids.length) return toast("Escolha pelo menos um usuário.", "erro");
     if (!(await verConexao())) return toast("Conecte ao ClickUp primeiro.", "erro");
-    const membro = dados.membros.find((m) => m.id === u);
     const nivel = +$("#nivel").value;
     const nomes = {};
     dados.pastas.forEach((p) => { nomes[`folder:${p.id}`] = p.nome; p.listas.forEach((l) => { nomes[`list:${l.id}`] = `${p.nome} / ${l.nome}`; }); });
     const itens = [...marcadas].map((k) => { const [tipo, id] = k.split(":"); return { tipo, id, nome: nomes[k] || id }; });
     const lista = itens.slice(0, 40).map((i) => `<li>${i.tipo === "folder" ? "📁" : "📄"} ${esc(i.nome)}</li>`).join("") + (itens.length > 40 ? `<li>… e mais ${itens.length - 40}</li>` : "");
+    const rotuloNivel = (n) => NOMES_NIVEL[n] || NOMES_EXIBICAO[n] || "nível " + n;
+    const origem = (a) => a.herdado ? (a.herdado === "space" ? "herdado do espaço" : "herdado da pasta") : "direto";
+
+    // Lê de uma vez o nível atual de TODOS os usuários escolhidos nas pastas/listas marcadas
+    // e nas listas dentro das pastas marcadas (só leitura).
+    const b = $("#btn-aplicar"); b.disabled = true; b.textContent = "Conferindo os acessos atuais…";
+    const pastasMarcadas = dados.pastas.filter((p) => p.id && marcadas.has(`folder:${p.id}`));
+    const idsDentro = pastasMarcadas.flatMap((p) => p.listas.map((l) => l.id)).filter((id) => !marcadas.has(`list:${id}`));
+    let porUsuario = {}, leu = true;
+    try {
+      const r = await post("/api/permissoes/acessos", { usuarios: ids, workspace: dados.workspace,
+        pastas: itens.filter((i) => i.tipo === "folder").map((i) => i.id),
+        listas: [...new Set(itens.filter((i) => i.tipo === "list").map((i) => i.id).concat(idsDentro))] });
+      porUsuario = r.usuarios || {};
+    } catch (e) { leu = false; toast(`Não consegui ler os acessos atuais: ${e.message}`, "erro"); }
+    b.textContent = "Aplicar permissões…"; desenharArvore();
+    const atualDe = (u, tipo, id) => ((porUsuario[u] || {})[tipo === "folder" ? "pastas" : "listas"] || {})[id] || null;
 
     // Prévia (21/10/2026): listas DENTRO das pastas marcadas em que o usuário já tem
     // permissão própria (não herdada) com outro nível -- essas não mudam só com a pasta.
-    const b = $("#btn-aplicar"); b.disabled = true; b.textContent = "Conferindo as listas…";
-    let proprias = [];
-    try {
-      const pastasMarcadas = dados.pastas.filter((p) => p.id && marcadas.has(`folder:${p.id}`));
-      const idsListas = pastasMarcadas.flatMap((p) => p.listas.map((l) => l.id)).filter((id) => !marcadas.has(`list:${id}`));
-      if (idsListas.length) {
-        const r = await post("/api/permissoes/acessos", { usuario: u, workspace: dados.workspace, pastas: [], listas: idsListas });
-        pastasMarcadas.forEach((p) => p.listas.forEach((l) => {
-          const a = r.listas[l.id];
-          if (a && !a.herdado && a.nivel !== nivel) proprias.push({ tipo: "list", id: l.id, nome: `${p.nome} / ${l.nome}`, nivel: a.nivel });
-        }));
-      }
-    } catch (e) { toast(`Não consegui conferir as listas: ${e.message}`, "erro"); }
-    b.textContent = "Aplicar permissões…"; desenharArvore();
+    const proprias = {};
+    ids.forEach((u) => {
+      proprias[u] = [];
+      pastasMarcadas.forEach((p) => p.listas.forEach((l) => {
+        if (marcadas.has(`list:${l.id}`)) return;
+        const a = atualDe(u, "list", l.id);
+        if (a && !a.herdado && a.nivel !== nivel) proprias[u].push({ tipo: "list", id: l.id, nome: `${p.nome} / ${l.nome}`, nivel: a.nivel });
+      }));
+    });
+    const totalProprias = ids.reduce((s, u) => s + proprias[u].length, 0);
 
-    const aviso = proprias.length
-      ? `<div class="aviso erro"><b>Atenção:</b> em ${proprias.length} lista(s) dessas pastas o usuário já tem permissão própria, que <b>não muda</b> só liberando a pasta:<ul>${
-          proprias.slice(0, 25).map((p) => `<li>📄 ${esc(p.nome)} — hoje: <b>${esc(NOMES_NIVEL[p.nivel] || NOMES_EXIBICAO[p.nivel] || "nível " + p.nivel)}</b></li>`).join("")}${proprias.length > 25 ? `<li>… e mais ${proprias.length - 25}</li>` : ""}</ul>
-          Escolha abaixo se quer incluir essas listas para ficarem também em <b>${esc(NOMES_NIVEL[nivel])}</b>.</div>`
+    const blocoUsuarios = ids.map((u) => { const m = membroDe(u);
+      return `<li><b>${esc(m.nome)}</b> <span class="ajuda">(${esc(m.papel)}${m.email ? ", " + esc(m.email) : ""})</span> · ${itens.length} item(ns)`
+        + (proprias[u].length ? ` · <span class="erro">${proprias[u].length} lista(s) com permissão própria</span>` : "") + `</li>`; }).join("");
+    const aviso = totalProprias
+      ? `<div class="aviso erro"><b>Atenção:</b> nestas listas o usuário já tem permissão própria, que <b>não muda</b> só liberando a pasta:<ul style="max-height:200px;overflow:auto">${
+          ids.filter((u) => proprias[u].length).map((u) => `<li><b>${esc(membroDe(u).nome)}</b><ul>${proprias[u].slice(0, 25).map((p) => `<li>📄 ${esc(p.nome)} — hoje: <b>${esc(rotuloNivel(p.nivel))}</b></li>`).join("")}${proprias[u].length > 25 ? `<li>… e mais ${proprias[u].length - 25}</li>` : ""}</ul></li>`).join("")}</ul>
+          Escolha abaixo se quer incluir essas listas para ficarem também em <b>${esc(rotuloNivel(nivel))}</b>.</div>`
       : "";
-    const escolha = await BPMS.modal({ titulo: `Liberar acesso para ${membro ? membro.nome : u}?`,
-      html: `<b>Usuário:</b> ${esc(membro ? `${membro.nome} (${membro.papel}${membro.email ? ", " + membro.email : ""})` : u)}<br><b>Nível:</b> ${esc(NOMES_NIVEL[nivel])}<br><b>${itens.length} item(ns):</b><ul>${lista}</ul>`
+    const titulo = ids.length === 1 ? `Liberar acesso para ${membroDe(ids[0]).nome}?` : `Liberar acesso para ${ids.length} usuários?`;
+    const escolha = await BPMS.modal({ titulo,
+      html: `<b>Nível:</b> ${esc(rotuloNivel(nivel))}<br><b>${ids.length} usuário(s):</b><ul style="max-height:180px;overflow:auto">${blocoUsuarios}</ul>`
+        + `<b>${itens.length} item(ns) para ${ids.length === 1 ? "o usuário" : "cada usuário"}:</b><ul style="max-height:200px;overflow:auto">${lista}</ul>`
         + aviso
-        + `<div class="aviso">A Central aplica no ClickUp um item por vez, com a sua sessão, e confere o resultado de cada um. Fica registrado em dados/permissoes_clickup.jsonl.</div>`,
+        + (leu ? "" : `<div class="aviso erro"><b>Não consegui ler os níveis atuais.</b> Não dá para avisar se algum usuário vai perder nível. Melhor cancelar e tentar de novo.</div>`)
+        + `<div class="aviso">A Central aplica no ClickUp um item por vez, usuário por usuário, com a sua sessão, e confere o resultado de cada um. Fica registrado em dados/permissoes_clickup.jsonl.</div>`,
       opcoes: [{ valor: null, rotulo: "Cancelar", estilo: "neutro" }]
-        .concat(proprias.length ? [{ valor: "so", rotulo: "Liberar sem essas listas", estilo: "neutro" },
-                                   { valor: "com", rotulo: `Liberar e incluir as ${proprias.length} lista(s)` }]
-                                : [{ valor: "so", rotulo: "Liberar acesso" }]) });
+        .concat(totalProprias ? [{ valor: "so", rotulo: "Liberar sem essas listas", estilo: "neutro" },
+                                 { valor: "com", rotulo: `Liberar e incluir as ${totalProprias} lista(s)` }]
+                              : [{ valor: "so", rotulo: leu ? "Liberar acesso" : "Liberar mesmo sem conferir", estilo: leu ? "primario" : "perigo" }]) });
     if (!escolha) return;
-    if (escolha === "com") proprias.forEach((p) => itens.push({ tipo: p.tipo, id: p.id, nome: p.nome }));
+
+    // Itens de cada usuário, já com o nível que ele tem hoje ("anterior", vai para o registro).
+    let lotes = ids.map((u) => ({ id: u, nome: membroDe(u).nome,
+      itens: itens.concat(escolha === "com" ? proprias[u] : []).map((i) => {
+        const a = atualDe(u, i.tipo, i.id);
+        return { tipo: i.tipo, id: i.id, nome: i.nome, anterior: a ? a.nivel : null, origem: a ? origem(a) : "" };
+      }) }));
+
+    // 23/11/2026 (Fragoso): nível novo MENOR que o atual -> pergunta antes de rebaixar.
+    const casos = lotes.flatMap((l) => l.itens.filter((i) => i.anterior && i.anterior > nivel).map((i) => ({ u: l, i })));
+    if (casos.length) {
+      const demais = lotes.reduce((s, l) => s + l.itens.length, 0) - casos.length;
+      const grupos = lotes.filter((l) => l.itens.some((i) => i.anterior > nivel));
+      const r = await BPMS.modal({ titulo: `Rebaixar o nível em ${casos.length} caso(s)?`, perigo: true,
+        html: `Em <b>${casos.length}</b> pasta(s)/lista(s) o usuário já tem nível <b>maior</b> que <b>${esc(rotuloNivel(nivel))}</b>. Se prosseguir, ele passa a ter só <b>${esc(rotuloNivel(nivel))}</b> nelas:`
+          + `<ul style="max-height:260px;overflow:auto">${grupos.map((l) => `<li><b>${esc(l.nome)}</b><ul>${
+              l.itens.filter((i) => i.anterior > nivel).slice(0, 30).map((i) => `<li>${i.tipo === "folder" ? "📁" : "📄"} ${esc(i.nome)} — hoje: ${etiquetaNivel(i.anterior, rotuloNivel(i.anterior))} <span class="ajuda">${esc(i.origem)}</span> → ${etiquetaNivel(nivel, rotuloNivel(nivel))}</li>`).join("")
+              }${l.itens.filter((i) => i.anterior > nivel).length > 30 ? `<li>… e mais ${l.itens.filter((i) => i.anterior > nivel).length - 30}</li>` : ""}</ul></li>`).join("")}</ul>`
+          + (demais ? `<div class="aviso">Os outros <b>${demais}</b> item(ns) não são rebaixamento (o usuário não tinha acesso ou tinha nível igual/menor).</div>` : ""),
+        opcoes: [{ valor: null, rotulo: "Cancelar tudo", estilo: "neutro" }]
+          .concat(demais ? [{ valor: "demais", rotulo: `Prosseguir só nos demais (${demais})`, estilo: "neutro" }] : [])
+          .concat([{ valor: "rebaixar", rotulo: `Prosseguir e rebaixar os ${casos.length}`, estilo: "perigo" }]) });
+      if (!r) return;
+      if (r === "demais") {
+        lotes = lotes.map((l) => ({ ...l, itens: l.itens.filter((i) => !(i.anterior && i.anterior > nivel)) })).filter((l) => l.itens.length);
+        if (!lotes.length) return toast("Nada a aplicar: todos os itens eram rebaixamento.", "ok");
+      }
+    }
+
     travar(true);
-    BPMS.iniciar("/api/permissoes/aplicar", { usuario: u, nome_usuario: membro ? membro.nome : u, workspace: dados.workspace, nivel, itens, confirmar: true }, el, (t) => {
-      if (t && t.resultado) { Object.assign(situacao, t.resultado.situacao); marcadas.clear(); }
+    BPMS.iniciar("/api/permissoes/aplicar", { workspace: dados.workspace, nivel, confirmar: true,
+      usuarios: lotes.map((l) => ({ id: l.id, nome: l.nome, itens: l.itens.map(({ tipo, id, nome, anterior }) => ({ tipo, id, nome, anterior })) })) }, el, (t) => {
+      if (t && t.resultado) {
+        // A situação vem por usuário ("id|folder:123"); na árvore mostra o pior resultado do item.
+        const peso = { OK: 0, CONFERIR: 1, FALHOU: 2 };
+        Object.entries(t.resultado.situacao || {}).forEach(([chave, v]) => {
+          const k = chave.includes("|") ? chave.split("|")[1] : chave;
+          if (!situacao[k] || (peso[v] || 0) > (peso[situacao[k]] || 0)) situacao[k] = v;
+        });
+        marcadas.clear();
+      }
       travar(false);
     });
   };

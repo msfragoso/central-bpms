@@ -8,6 +8,14 @@ Formato da versão: **MAIOR.MENOR.CORREÇÃO** (ex.: 1.2.3)
 Cada publicação no GitHub ganha uma versão aqui, a mesma no rodapé das telas e
 uma etiqueta (tag) `vX.Y.Z` no repositório.
 
+## 1.20.0 — 23/11/2026
+- Permissões ClickUp: dá para escolher vários usuários de uma vez. A lista mostra todos os usuários para marcar
+  com clique (o campo de cima só filtra); o mesmo nível e as mesmas pastas/listas valem para todos, e a Central
+  aplica usuário por usuário, conferindo cada item.
+- Permissões ClickUp: antes de aplicar, a tela lê o nível atual de cada usuário e, quando o nível novo é menor
+  que o atual, pergunta antes de rebaixar: cancelar tudo, prosseguir só nos demais ou rebaixar mesmo. O registro
+  guarda o nível anterior e marca os rebaixamentos.
+
 ## 1.19.0 — 19/11/2026
 - Aceite de OS: o bloqueio passa a ser por OS. Uma OS bloqueada (por exemplo, tempo quebrado) não segura mais as
   outras da FAP, e pode ser liberada na tela, uma a uma, com o motivo à vista e registro no log; o envio mostra

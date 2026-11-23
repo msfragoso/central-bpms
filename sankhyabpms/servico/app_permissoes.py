@@ -87,15 +87,21 @@ def _acls(workspace, tipo, ids):
 
 @rota("POST", "/api/permissoes/acessos")
 def acessos(req):
-    """Nível atual do usuário em cada pasta/lista (só leitura)."""
+    """Nível atual do usuário em cada pasta/lista (só leitura).
+    23/11/2026: aceita "usuarios" (lista) e devolve {"usuarios": {id: {pastas, listas}}},
+    lendo as ACLs uma vez só para todos."""
     user = str(req.corpo.get("usuario") or "")
+    varios = [str(x) for x in req.corpo.get("usuarios") or [] if x]
     pastas = [str(x) for x in req.corpo.get("pastas") or [] if x]
     listas = [str(x) for x in req.corpo.get("listas") or [] if x]
     workspace = str(req.corpo.get("workspace") or "")
-    if not user or not workspace:
+    if not (user or varios) or not workspace:
         raise ErroUsuario("Escolha o usuário.")
     ap, al = _acls(workspace, "folder", pastas), _acls(workspace, "list", listas)
-    return 200, {"pastas": {k: v.get(user) for k, v in ap.items()}, "listas": {k: v.get(user) for k, v in al.items()}}
+    um = lambda u: {"pastas": {k: v.get(u) for k, v in ap.items()}, "listas": {k: v.get(u) for k, v in al.items()}}
+    if varios:
+        return 200, {"usuarios": {u: um(u) for u in varios}}
+    return 200, um(user)
 
 
 NOMES_EXIBICAO = {1: "Ver", 3: "Comentar", 4: "Editar", 5: "Edição total"}
@@ -267,65 +273,90 @@ def relatorio_usuario(req):
 
 @rota("POST", "/api/permissoes/aplicar")
 def aplicar(req):
+    """23/11/2026: aceita vários usuários de uma vez ("usuarios": [{id, nome, itens}]), cada um
+    com a própria lista de itens (a tela tira os rebaixamentos que o Fragoso recusar).
+    Cada item pode trazer "anterior" (nível que o usuário tinha), que vai para o registro."""
     exigir_confirmacao(req)
     c = req.corpo
-    user, workspace = str(c.get("usuario") or ""), str(c.get("workspace") or "")
+    workspace = str(c.get("workspace") or "")
     try:
         nivel = int(c.get("nivel"))
     except (TypeError, ValueError):
         nivel = 0
     if nivel not in NIVEIS:
         raise ErroUsuario("Nível de acesso inválido.")
-    itens = [(i.get("tipo"), str(i.get("id")), i.get("nome") or "") for i in c.get("itens") or []
-             if i.get("tipo") in ("folder", "list") and i.get("id")]
-    if not user or not workspace or not itens:
+    brutos = c.get("usuarios") or [{"id": c.get("usuario"), "nome": c.get("nome_usuario"), "itens": c.get("itens")}]
+    lotes = []
+    for u in brutos:
+        uid = str((u or {}).get("id") or "")
+        itens = [(i.get("tipo"), str(i.get("id")), i.get("nome") or "",
+                  int(i["anterior"]) if str(i.get("anterior") or "").isdigit() else None)
+                 for i in (u or {}).get("itens") or [] if i.get("tipo") in ("folder", "list") and i.get("id")]
+        if uid.lstrip("-").isdigit() and itens:
+            lotes.append((uid, u.get("nome") or uid, itens))
+    if not workspace or not lotes:
         raise ErroUsuario("Escolha o usuário e marque pelo menos uma pasta ou lista.")
-    nome_user = c.get("nome_usuario") or user
+    total = sum(len(l[2]) for l in lotes)
+
+    def registrar(user, nome_user, tipo, oid, nome, anterior, resultado):
+        with open(dados_arquivo(ARQ_LOG), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "usuario": user,
+                                "nome_usuario": nome_user, "tipo": tipo, "id": oid, "nome": nome,
+                                "nivel": nivel, "nivel_anterior": anterior,
+                                "rebaixamento": bool(anterior and anterior > nivel),
+                                "resultado": resultado}, ensure_ascii=False) + "\n")
 
     def trabalho(t):
-        ok = erros = 0
+        ok = erros = feitos = 0
         situacao = {}
-        for n, (tipo, oid, nome) in enumerate(itens, 1):
-            rotulo = f"{'Pasta' if tipo == 'folder' else 'Lista'} {nome or oid}"
-            try:
-                r = CLICKUP_WEB.chamar("PATCH", f"/v3-user/access/{workspace}/{tipo}/{oid}/acls?include_parents=default&expand_groups=true",
-                                       {"entries": [{"id": int(user), "kind": "user", "permission_level": nivel}]},
-                                       workspace_id=workspace)
-                ent = ((r.get("acls") or [{}])[0].get("data") or {}).get("entries") or []
-                atual = next((e.get("permission_level") for e in ent if str(e.get("id")) == user), None)
-                if atual == nivel:
-                    ok += 1
-                    situacao[f"{tipo}:{oid}"] = "OK"
-                    t.log(f"  [{n}/{len(itens)}] {rotulo}: {NIVEIS[nivel]} ✓")
-                    resultado = "ok"
-                else:
+        caiu = False
+        for user, nome_user, itens in lotes:
+            if caiu:
+                break
+            if len(lotes) > 1:
+                t.log(f"{nome_user} ({len(itens)} item(ns)):")
+            for n, (tipo, oid, nome, anterior) in enumerate(itens, 1):
+                feitos += 1
+                rotulo = f"{'Pasta' if tipo == 'folder' else 'Lista'} {nome or oid}"
+                if anterior and anterior > nivel:
+                    rotulo += f" (rebaixando de {NOMES_EXIBICAO.get(anterior, anterior)})"
+                chave = f"{user}|{tipo}:{oid}"
+                try:
+                    r = CLICKUP_WEB.chamar("PATCH", f"/v3-user/access/{workspace}/{tipo}/{oid}/acls?include_parents=default&expand_groups=true",
+                                           {"entries": [{"id": int(user), "kind": "user", "permission_level": nivel}]},
+                                           workspace_id=workspace)
+                    ent = ((r.get("acls") or [{}])[0].get("data") or {}).get("entries") or []
+                    atual = next((e.get("permission_level") for e in ent if str(e.get("id")) == user), None)
+                    if atual == nivel:
+                        ok += 1
+                        situacao[chave] = "OK"
+                        t.log(f"  [{n}/{len(itens)}] {rotulo}: {NIVEIS[nivel]} ✓")
+                        resultado = "ok"
+                    else:
+                        erros += 1
+                        situacao[chave] = "CONFERIR"
+                        t.log(f"  [{n}/{len(itens)}] {rotulo}: o ClickUp respondeu, mas o nível ficou {atual} -- conferir")
+                        resultado = "conferir"
+                except Exception as e:
                     erros += 1
-                    situacao[f"{tipo}:{oid}"] = "CONFERIR"
-                    t.log(f"  [{n}/{len(itens)}] {rotulo}: o ClickUp respondeu, mas o nível ficou {atual} -- conferir")
-                    resultado = "conferir"
-            except Exception as e:
-                erros += 1
-                situacao[f"{tipo}:{oid}"] = "FALHOU"
-                resultado = f"falha: {e}"
-                t.log(f"  [{n}/{len(itens)}] {rotulo}: FALHOU ({e})")
-                if CLICKUP_WEB.estado != "conectado":
-                    # Sem sessão não adianta seguir: para aqui e não tenta os demais.
-                    t.log(f"  Parado: a sessão do ClickUp caiu. {len(itens) - n} item(ns) NÃO foram tentados. "
-                          "Conecte de novo e aplique outra vez.")
-                    with open(dados_arquivo(ARQ_LOG), "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "usuario": user,
-                                            "nome_usuario": nome_user, "tipo": tipo, "id": oid, "nome": nome,
-                                            "nivel": nivel, "resultado": resultado}, ensure_ascii=False) + "\n")
-                    break
-            with open(dados_arquivo(ARQ_LOG), "a", encoding="utf-8") as f:
-                f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "usuario": user,
-                                    "nome_usuario": nome_user, "tipo": tipo, "id": oid, "nome": nome,
-                                    "nivel": nivel, "resultado": resultado}, ensure_ascii=False) + "\n")
-            time.sleep(0.3)
+                    situacao[chave] = "FALHOU"
+                    resultado = f"falha: {e}"
+                    t.log(f"  [{n}/{len(itens)}] {rotulo}: FALHOU ({e})")
+                    if CLICKUP_WEB.estado != "conectado":
+                        # Sem sessão não adianta seguir: para aqui e não tenta os demais.
+                        t.log(f"  Parado: a sessão do ClickUp caiu. {total - feitos} item(ns) NÃO foram tentados. "
+                              "Conecte de novo e aplique outra vez.")
+                        registrar(user, nome_user, tipo, oid, nome, anterior, resultado)
+                        caiu = True
+                        break
+                registrar(user, nome_user, tipo, oid, nome, anterior, resultado)
+                time.sleep(0.3)
         t.adicionar_arquivo("Registro de permissões (.jsonl)", dados_arquivo(ARQ_LOG))
         marcar_uso("permissoes")
-        return {"mensagem": f"{ok} acesso(s) aplicado(s) para {nome_user}, {erros} com problema.",
+        quem = lotes[0][1] if len(lotes) == 1 else f"{len(lotes)} usuário(s)"
+        return {"mensagem": f"{ok} acesso(s) aplicado(s) para {quem}, {erros} com problema.",
                 "resultado": {"situacao": situacao}}
 
-    t = GERENTE.iniciar("permissoes", f"Permissões ClickUp: {nome_user} ({len(itens)} item(ns))", trabalho)
+    titulo = lotes[0][1] if len(lotes) == 1 else f"{len(lotes)} usuários"
+    t = GERENTE.iniciar("permissoes", f"Permissões ClickUp: {titulo} ({total} item(ns))", trabalho)
     return 200, {"tarefa": t.id}
